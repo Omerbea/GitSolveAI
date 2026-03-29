@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:15432/gitsolve_test_nonexistent
+    username: test
+    password: test
+  jpa:
+    hibernate:
+      ddl-auto: none
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+
+gitsolve:
+  github:
+    app-token: test-token
+    max-repos-per-run: 10
+    max-issues-per-repo: 5
+  llm:
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    max-tokens-per-run: 500000
+    max-iterations-per-fix: 5
+  docker:
+    image: eclipse-temurin:21-jdk
+    mem-limit-mb: 1024
+    cpu-quota: 50000
+    build-timeout-seconds: 300
+  schedule:
+    cron: "0 0 0 * * *"
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces

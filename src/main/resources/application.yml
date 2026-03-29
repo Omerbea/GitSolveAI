@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: gitsolve-ai
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/gitsolve}
+    username: ${DATABASE_USER:gitsolve}
+    password: ${DATABASE_PASSWORD:gitsolve}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+gitsolve:
+  github:
+    app-token: ${GITHUB_APP_TOKEN:}
+    max-repos-per-run: 10
+    max-issues-per-repo: 5
+  llm:
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    max-tokens-per-run: 500000
+    max-iterations-per-fix: 5
+  docker:
+    image: eclipse-temurin:21-jdk
+    mem-limit-mb: 1024
+    cpu-quota: 50000
+    build-timeout-seconds: 300
+  schedule:
+    cron: "0 0 0 * * *"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+logging:
+  level:
+    com.gitsolve: DEBUG
+    org.flywaydb: INFO

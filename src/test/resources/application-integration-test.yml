@@ -1,0 +1,33 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# datasource URL/user/pass are injected via @DynamicPropertySource in PostgresTestSupport
+
+gitsolve:
+  github:
+    app-token: test-token
+    max-repos-per-run: 10
+    max-issues-per-repo: 5
+  llm:
+    provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    max-tokens-per-run: 500000
+    max-iterations-per-fix: 5
+  docker:
+    image: eclipse-temurin:21-jdk
+    mem-limit-mb: 1024
+    cpu-quota: 50000
+    build-timeout-seconds: 300
+  schedule:
+    cron: "0 0 0 * * *"
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
