@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${'Diff — #' + issue.issueNumber + ' ' + issue.issueTitle}">Diff</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
+        h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+        .meta { color: #666; font-size: 0.875rem; margin-bottom: 1.5rem; }
+        a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        pre {
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.825rem;
+            line-height: 1.5;
+            white-space: pre;
+        }
+        .line-add    { color: #166534; background: #f0fdf4; display: block; }
+        .line-remove { color: #991b1b; background: #fff1f2; display: block; }
+        .line-meta   { color: #6366f1; display: block; }
+    </style>
+</head>
+<body>
+
+<p><a href="/">← Back to dashboard</a></p>
+
+<h1 th:text="${'#' + issue.issueNumber + ' ' + issue.issueTitle}">Issue title</h1>
+<div class="meta">
+    <span th:text="${issue.repoFullName}">repo</span>
+    &nbsp;·&nbsp;
+    <span th:text="${issue.status}">STATUS</span>
+    &nbsp;·&nbsp;
+    <span th:text="${issue.iterationCount + ' iteration(s)'}">0 iteration(s)</span>
+    <span th:if="${issue.fixSummary != null}">
+        &nbsp;·&nbsp; <em th:text="${issue.fixSummary}">summary</em>
+    </span>
+</div>
+
+<pre th:text="${diff}">No diff available</pre>
+
+</body>
+</html>

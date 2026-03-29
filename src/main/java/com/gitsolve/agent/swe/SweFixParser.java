@@ -3,12 +3,15 @@ package com.gitsolve.agent.swe;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.stereotype.Component;
+
 /**
  * Stateless parser for the SWE Agent's fix response.
  *
  * Strips JSON code-fences that LLMs frequently add despite instructions not to,
  * then deserialises the payload into a {@link SweFixResponse} record.
  */
+@Component
 public class SweFixParser {
 
     private final ObjectMapper objectMapper;

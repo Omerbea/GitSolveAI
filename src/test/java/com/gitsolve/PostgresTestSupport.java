@@ -3,27 +3,31 @@ package com.gitsolve;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base class for integration tests that require a live Postgres instance.
  *
- * Extend this class and annotate the subclass with @SpringBootTest to get
- * a fully-migrated database wired into the Spring context automatically.
+ * Uses a manually-managed singleton container (started once per JVM, reused across
+ * all subclasses). This avoids the @Testcontainers + @Container per-class lifecycle
+ * which starts a new container for every subclass, causing HikariCP reconnection
+ * failures when the first container is stopped while the second Spring context is
+ * still holding connections to it.
  *
- * The container is static (shared within a JVM run) so multiple test classes
- * that extend this base reuse the same container.
+ * The container is started eagerly in the static initialiser and will be stopped
+ * by the JVM shutdown hook registered by Testcontainers (Ryuk is still active for
+ * cleanup, but the container itself is not managed by the @Container lifecycle).
  */
-@Testcontainers
 public abstract class PostgresTestSupport {
 
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
-                    .withDatabaseName("gitsolve_test")
-                    .withUsername("test")
-                    .withPassword("test");
+    private static final PostgreSQLContainer<?> POSTGRES;
+
+    static {
+        POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("gitsolve_test")
+                .withUsername("test")
+                .withPassword("test");
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {

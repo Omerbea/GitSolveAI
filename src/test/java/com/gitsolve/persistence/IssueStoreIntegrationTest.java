@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.*;
  * Flyway migrations are applied automatically via the integration-test profile.
  */
 @Tag("integration")
+@Tag("persistence")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("integration-test")
 class IssueStoreIntegrationTest extends PostgresTestSupport {

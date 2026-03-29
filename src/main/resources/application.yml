@@ -19,13 +19,13 @@ spring:
 gitsolve:
   github:
     app-token: ${GITHUB_APP_TOKEN:}
-    max-repos-per-run: 10
+    max-repos-per-run: 5
     max-issues-per-repo: 5
   llm:
     provider: anthropic
-    model: claude-3-5-sonnet-20241022
+    model: claude-haiku-4-5-20251001
     max-tokens-per-run: 500000
-    max-iterations-per-fix: 5
+    max-iterations-per-fix: 3
   docker:
     image: eclipse-temurin:21-jdk
     mem-limit-mb: 1024

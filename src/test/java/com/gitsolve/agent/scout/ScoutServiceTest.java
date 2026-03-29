@@ -160,6 +160,59 @@ class ScoutServiceTest {
     }
 
     // ------------------------------------------------------------------ //
+    // discoverTargetRepos — prose response fallback                       //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void discoverTargetRepos_extractsArrayFromProseResponse() {
+        String proseWithArray =
+                "Based on my search, here are the repositories I found:\n" +
+                "[{\"fullName\":\"apache/commons-lang\",\"cloneUrl\":\"https://github.com/apache/commons-lang.git\"," +
+                "\"htmlUrl\":\"https://github.com/apache/commons-lang\",\"starCount\":2100," +
+                "\"forkCount\":800,\"commitCount\":42,\"velocityScore\":8.5}]\n" +
+                "These are the most active repos with good-first-issues.";
+
+        when(scoutAiService.discoverRepositories(anyInt(), anyString()))
+                .thenReturn(proseWithArray);
+
+        List<GitRepository> result = service.discoverTargetRepos(3);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).fullName()).isEqualTo("apache/commons-lang");
+    }
+
+    // ------------------------------------------------------------------ //
+    // extractJson (static helper)                                          //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void extractJson_cleanArray_returnedAsIs() {
+        String input = "[{\"fullName\":\"owner/repo\"}]";
+        assertThat(ScoutService.extractJson(input)).isEqualTo(input);
+    }
+
+    @Test
+    void extractJson_codeFencedArray_stripped() {
+        assertThat(ScoutService.extractJson("```json\n[]\n```")).isEqualTo("[]");
+    }
+
+    @Test
+    void extractJson_proseWrapped_arrayExtracted() {
+        String input = "Here are the results: [{\"fullName\":\"owner/repo\"}] Hope this helps!";
+        assertThat(ScoutService.extractJson(input)).isEqualTo("[{\"fullName\":\"owner/repo\"}]");
+    }
+
+    @Test
+    void extractJson_noArrayPresent_returnsEmptyArray() {
+        assertThat(ScoutService.extractJson("No repositories found.")).isEqualTo("[]");
+    }
+
+    @Test
+    void extractJson_null_returnsEmptyArray() {
+        assertThat(ScoutService.extractJson(null)).isEqualTo("[]");
+    }
+
+    // ------------------------------------------------------------------ //
     // stripCodeFences (static helper)                                      //
     // ------------------------------------------------------------------ //
 

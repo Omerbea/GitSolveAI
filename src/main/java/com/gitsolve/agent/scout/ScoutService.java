@@ -48,6 +48,7 @@ public class ScoutService {
      *
      * The LLM calls GitHub tools and returns a JSON array of GitRepository objects.
      * Code-fence wrapping (```json...```) is stripped before deserialization.
+     * If the LLM returns prose containing a JSON array, the array is extracted.
      * On any parse failure the method returns an empty list — never throws.
      */
     public List<GitRepository> discoverTargetRepos(int maxRepos) {
@@ -55,10 +56,13 @@ public class ScoutService {
         log.info("Scout: discovering top {} repos (date={})", maxRepos, today);
 
         String raw = scoutAiService.discoverRepositories(maxRepos, today);
-        String json = stripCodeFences(raw);
+        String json = extractJson(raw);
 
         try {
-            return objectMapper.readValue(json, new TypeReference<List<GitRepository>>() {});
+            List<GitRepository> repos = objectMapper.readValue(json,
+                    new TypeReference<List<GitRepository>>() {});
+            log.info("Scout: parsed {} repositories from LLM response", repos.size());
+            return repos;
         } catch (Exception e) {
             log.error("Scout: failed to parse LLM response as GitRepository list. raw={}, error={}",
                     raw, e.getMessage());
@@ -95,6 +99,42 @@ public class ScoutService {
     // ------------------------------------------------------------------ //
     // Private helpers                                                      //
     // ------------------------------------------------------------------ //
+
+    /**
+     * Extracts a JSON array from the LLM response.
+     *
+     * Handles three cases:
+     * 1. Clean JSON array:                    [{"fullName":...}]
+     * 2. Code-fenced:                         ```json\n[...]\n```
+     * 3. Prose with embedded array:           "Here are repos: [{"fullName":...}]"
+     *
+     * Returns the extracted JSON string, or the original if no array is found.
+     */
+    static String extractJson(String raw) {
+        if (raw == null) return "[]";
+        String trimmed = raw.strip();
+
+        // Step 1: strip code fences
+        trimmed = stripCodeFences(trimmed);
+
+        // Step 2: if it already starts with '[', trust it
+        if (trimmed.startsWith("[")) {
+            return trimmed;
+        }
+
+        // Step 3: find the first '[' and last ']' — extract the embedded array
+        int start = trimmed.indexOf('[');
+        int end   = trimmed.lastIndexOf(']');
+        if (start != -1 && end != -1 && end > start) {
+            String extracted = trimmed.substring(start, end + 1);
+            log.warn("Scout: LLM returned prose — extracted JSON array from response");
+            return extracted;
+        }
+
+        // Step 4: no array found — return empty array so parse succeeds with 0 repos
+        log.warn("Scout: LLM returned no JSON array in response. raw={}", raw);
+        return "[]";
+    }
 
     /**
      * Strips JSON code fences that LLMs frequently add despite instructions not to.

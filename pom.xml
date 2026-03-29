@@ -220,5 +220,12 @@
                 <test.groups>integration</test.groups>
             </properties>
         </profile>
+        <!-- Fast persistence-only integration tests (Postgres + Testcontainers, no Docker build containers) -->
+        <profile>
+            <id>persistence</id>
+            <properties>
+                <test.groups>persistence</test.groups>
+            </properties>
+        </profile>
     </profiles>
 </project>

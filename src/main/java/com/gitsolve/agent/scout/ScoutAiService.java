@@ -29,14 +29,23 @@ public interface ScoutAiService {
             - Do not return archived or forked repositories.
             - Only include repositories that have at least one good-first-issue ticket.
 
-            OUTPUT FORMAT — respond with a JSON array and nothing else:
-            [{"fullName":"owner/repo","cloneUrl":"https://...","htmlUrl":"https://...",\
-            "starCount":0,"forkCount":0,"commitCount":0,"velocityScore":0.0}]
+            CRITICAL — OUTPUT RULES:
+            - Your ENTIRE response must be a single JSON array. Nothing else.
+            - Do NOT write any English text before or after the array.
+            - Do NOT write "Here are the repositories" or any explanation.
+            - Do NOT use markdown code fences.
+            - If you found 0 qualifying repositories, respond with exactly: []
+            - The array must match this schema exactly:
+            [{"fullName":"owner/repo","cloneUrl":"https://github.com/owner/repo.git","htmlUrl":"https://github.com/owner/repo","starCount":1234,"forkCount":56,"commitCount":78,"velocityScore":9.0}]
 
-            Do not include any text, explanation, or markdown outside the JSON array.
+            WRONG (never do this):
+            Based on my search, here are the repositories: [...]
+
+            CORRECT (always do this):
+            [{"fullName":"apache/commons-lang","cloneUrl":"https://github.com/apache/commons-lang.git",...}]
             """)
     @UserMessage("Find the top {{maxRepos}} active Java repositories with good-first-issues. " +
-                 "Today's date is {{today}}.")
+                 "Today's date is {{today}}. Reply with the JSON array only.")
     String discoverRepositories(
             @V("maxRepos") int maxRepos,
             @V("today")    String today

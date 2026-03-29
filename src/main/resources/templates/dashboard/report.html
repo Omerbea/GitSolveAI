@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${'Report — ' + issue.issueTitle}">Fix Report</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; max-width: 1100px; }
+        h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+        h2 { font-size: 1rem; margin-top: 2rem; margin-bottom: 0.5rem;
+             border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; color: #444; text-transform: uppercase; letter-spacing: 0.04em; }
+        .meta { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-passed  { background: #d1fae5; color: #065f46; }
+        .badge-failed  { background: #fee2e2; color: #991b1b; }
+        .badge-not-run { background: #f3f4f6; color: #6b7280; }
+        a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .body-text { background: #f9f9f9; border: 1px solid #e5e7eb; border-radius: 6px;
+                     padding: 1rem; font-size: 0.875rem; line-height: 1.6; white-space: pre-wrap; }
+        pre { background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 1rem;
+              overflow-x: auto; font-size: 0.8rem; line-height: 1.5; white-space: pre; }
+        .history-list { list-style: none; padding: 0; margin: 0; }
+        .history-list li { padding: 0.35rem 0; font-size: 0.875rem; border-bottom: 1px solid #f0f0f0; }
+        .no-report { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+                     padding: 1rem; color: #92400e; font-size: 0.875rem; }
+        .filepath { font-family: monospace; background: #f3f4f6; padding: 0.2rem 0.5rem;
+                    border-radius: 3px; font-size: 0.875rem; }
+    </style>
+</head>
+<body>
+
+<p><a href="/">← Back to dashboard</a></p>
+
+<h1 th:text="${issue.issueTitle}">Issue title</h1>
+<div class="meta">
+    <span th:text="${issue.repoFullName}">repo</span>
+    <span>·</span>
+    <a th:href="${'https://github.com/' + issue.repoFullName + '/issues/' + issue.issueNumber}"
+       th:text="${'#' + issue.issueNumber}"
+       target="_blank">issue</a>
+    <span>·</span>
+    <span th:if="${issue.status.name() == 'SUCCESS'}" class="badge badge-passed" th:text="${issue.status}">STATUS</span>
+    <span th:unless="${issue.status.name() == 'SUCCESS'}" class="badge badge-failed" th:text="${issue.status}">STATUS</span>
+    <span th:if="${issue.completedAt != null}">·
+        <span th:text="${#temporals.format(issue.completedAt, 'yyyy-MM-dd HH:mm')}">time</span>
+    </span>
+</div>
+
+<!-- No report yet -->
+<div th:if="${report == null}" class="no-report">
+    No investigation report available for this issue yet.
+    The SWE Agent either hasn't run on this issue or the report couldn't be saved.
+</div>
+
+<!-- Report content -->
+<div th:unless="${report == null}">
+
+    <!-- Build outcome -->
+    <h2>Build Outcome</h2>
+    <p>
+        <span th:switch="${report.buildStatus()}">
+            <span th:case="'PASSED'" class="badge badge-passed">✅ BUILD PASSED</span>
+            <span th:case="'FAILED'" class="badge badge-failed">❌ BUILD FAILED</span>
+            <span th:case="*"        class="badge badge-not-run">⬜ NOT RUN</span>
+        </span>
+        &nbsp;
+        <span th:text="${report.iterationCount() + ' iteration(s)'}">0 iterations</span>
+    </p>
+
+    <ul class="history-list" th:if="${!#lists.isEmpty(report.iterationHistory())}">
+        <li th:each="line : ${report.iterationHistory()}" th:text="${line}">iteration</li>
+    </ul>
+
+    <!-- Issue description -->
+    <h2>Issue Description</h2>
+    <div class="body-text" th:text="${report.issueBodyExcerpt()}">body</div>
+
+    <!-- Investigation -->
+    <h2>Investigation</h2>
+    <div class="body-text" th:text="${report.rootCauseAnalysis()}">analysis</div>
+
+    <!-- Proposed change -->
+    <h2>Proposed Change</h2>
+    <p th:if="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}">
+        File: <span class="filepath" th:text="${report.proposedFilePath()}">path</span>
+    </p>
+    <p th:unless="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}"
+       style="color:#999">No file path recorded.</p>
+
+    <!-- Diff -->
+    <h2>Unified Diff</h2>
+    <div th:if="${report.unifiedDiff() != null and !#strings.isEmpty(report.unifiedDiff())}">
+        <pre th:text="${report.unifiedDiff()}">diff</pre>
+    </div>
+    <p th:unless="${report.unifiedDiff() != null and !#strings.isEmpty(report.unifiedDiff())}"
+       style="color:#999">No diff recorded — the fix was not written to the container.</p>
+
+    <p style="color:#aaa; font-size:0.75rem; margin-top:2rem;"
+       th:text="${'Report generated: ' + #temporals.format(report.generatedAt(), 'yyyy-MM-dd HH:mm:ss')}">
+        generated
+    </p>
+
+</div>
+
+</body>
+</html>

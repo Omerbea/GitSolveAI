@@ -2,27 +2,40 @@ package com.gitsolve.persistence;
 
 import com.gitsolve.model.*;
 import com.gitsolve.persistence.entity.IssueRecord;
+import com.gitsolve.persistence.entity.RunLog;
+import com.gitsolve.persistence.entity.TokenUsageRecord;
 import com.gitsolve.persistence.repository.IssueRecordRepository;
+import com.gitsolve.persistence.repository.RunLogRepository;
+import com.gitsolve.persistence.repository.TokenUsageRecordRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * The ONLY persistence facade that agents and the orchestrator may call.
  * All state transitions on IssueRecord must go through this class.
- * Direct access to IssueRecordRepository from outside the persistence package is prohibited.
+ * Direct access to repositories from outside the persistence package is prohibited.
  */
 @Service
 @Transactional
 public class IssueStore {
 
-    private final IssueRecordRepository repository;
+    private final IssueRecordRepository      repository;
+    private final RunLogRepository           runLogRepository;
+    private final TokenUsageRecordRepository tokenUsageRepository;
 
-    public IssueStore(IssueRecordRepository repository) {
-        this.repository = repository;
+    public IssueStore(IssueRecordRepository repository,
+                      RunLogRepository runLogRepository,
+                      TokenUsageRecordRepository tokenUsageRepository) {
+        this.repository           = repository;
+        this.runLogRepository     = runLogRepository;
+        this.tokenUsageRepository = tokenUsageRepository;
     }
 
     /**
@@ -106,6 +119,25 @@ public class IssueStore {
     }
 
     /**
+     * Persists a {@link com.gitsolve.model.FixReport} onto the issue record.
+     * Called after every SWE Agent attempt — success or failure.
+     */
+    public void saveFixReport(Long id, com.gitsolve.model.FixReport report) {
+        IssueRecord record = findOrThrow(id);
+        record.setFixReport(report);
+        repository.save(record);
+    }
+
+    /**
+     * Looks up a single IssueRecord by its primary key.
+     * Used by the dashboard diff view.
+     */
+    @Transactional(readOnly = true)
+    public Optional<IssueRecord> findById(Long id) {
+        return repository.findById(id);
+    }
+
+    /**
      * Returns all records with the given status.
      */
     @Transactional(readOnly = true)
@@ -125,6 +157,74 @@ public class IssueStore {
                 (int) repository.countByStatus(IssueStatus.FAILED),
                 (int) repository.countByStatus(IssueStatus.SKIPPED)
         );
+    }
+
+    // ------------------------------------------------------------------ //
+    // Run lifecycle                                                        //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Creates a new RunLog in RUNNING status.
+     * Call at the start of each scheduled run; hold the returned entity to pass
+     * its id and runId to {@link #finishRun} and {@link #recordTokenUsage}.
+     */
+    public RunLog startRun() {
+        RunLog run = new RunLog();
+        run.setRunId(UUID.randomUUID());
+        run.setStartedAt(Instant.now());
+        run.setStatus(RunStatus.RUNNING);
+        return runLogRepository.save(run);
+    }
+
+    /**
+     * Closes a RunLog (RUNNING → COMPLETED or FAILED) with final statistics.
+     */
+    public void finishRun(Long runLogId, int scouted, int triaged,
+                          int attempted, int succeeded, int tokenUsage,
+                          RunStatus status) {
+        RunLog run = runLogRepository.findById(runLogId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "RunLog not found for id=" + runLogId));
+        run.setFinishedAt(Instant.now());
+        run.setIssuesScouted(scouted);
+        run.setIssuesTriaged(triaged);
+        run.setIssuesAttempted(attempted);
+        run.setIssuesSucceeded(succeeded);
+        run.setTokenUsage(tokenUsage);
+        run.setStatus(status);
+        runLogRepository.save(run);
+    }
+
+    /**
+     * Persists a per-agent token usage record linked to the current run.
+     *
+     * @param runId        UUID from the RunLog (links token rows to a run)
+     * @param agentName    e.g. "swe", "triage", "reviewer"
+     * @param model        LLM model name
+     * @param inputTokens  input token count (0 if unavailable)
+     * @param outputTokens output token count (0 if unavailable)
+     */
+    public void recordTokenUsage(UUID runId, String agentName, String model,
+                                 int inputTokens, int outputTokens) {
+        TokenUsageRecord record = new TokenUsageRecord();
+        record.setRunId(runId);
+        record.setAgentName(agentName);
+        record.setModel(model);
+        record.setInputTokens(inputTokens);
+        record.setOutputTokens(outputTokens);
+        record.setRecordedAt(Instant.now());
+        tokenUsageRepository.save(record);
+    }
+
+    /**
+     * Returns the most recent runs ordered by startedAt descending.
+     *
+     * @param limit maximum number of rows to return
+     */
+    @Transactional(readOnly = true)
+    public List<RunLog> recentRuns(int limit) {
+        return runLogRepository.findAll(
+                PageRequest.of(0, limit, Sort.by("startedAt").descending())).getContent();
     }
 
     // ------------------------------------------------------------------ //

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitSolve AI — Dashboard</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        h2 { font-size: 1.1rem; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; }
+        .stats { display: flex; gap: 1.5rem; margin: 1rem 0; }
+        .stat { background: #f5f5f5; border-radius: 6px; padding: 0.75rem 1.25rem; }
+        .stat .label { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat .value { font-size: 1.5rem; font-weight: 600; }
+        table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+        th { text-align: left; padding: 0.5rem 0.75rem; background: #f5f5f5; border-bottom: 2px solid #ddd; }
+        td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #eee; vertical-align: top; }
+        tr:hover td { background: #fafafa; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-failed  { background: #fee2e2; color: #991b1b; }
+        .badge-running { background: #dbeafe; color: #1e40af; }
+        a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .header { display: flex; align-items: baseline; justify-content: space-between; }
+        .btn-run {
+            background: #2563eb; color: #fff; border: none; border-radius: 6px;
+            padding: 0.5rem 1.25rem; font-size: 0.9rem; font-weight: 600;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .btn-run:hover { background: #1d4ed8; }
+        .btn-run:disabled { background: #93c5fd; cursor: not-allowed; }
+        .toast {
+            display: none; position: fixed; bottom: 1.5rem; right: 1.5rem;
+            background: #1a1a1a; color: #fff; border-radius: 6px;
+            padding: 0.75rem 1.25rem; font-size: 0.875rem; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>GitSolve AI</h1>
+        <p style="color:#666; margin:0">Autonomous Java issue fixer</p>
+    </div>
+    <button class="btn-run" id="triggerBtn" onclick="triggerRun()">▶ Run now</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function triggerRun() {
+    const btn = document.getElementById('triggerBtn');
+    const toast = document.getElementById('toast');
+    btn.disabled = true;
+    btn.textContent = '⏳ Starting…';
+    fetch('/api/runs/trigger', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            btn.textContent = '⏳ Running…';
+            toast.textContent = 'Run started — refresh the page in a moment to see progress.';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 5000);
+            // Re-enable after 10s so the user can't double-trigger immediately
+            setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Run now'; }, 10000);
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = '▶ Run now';
+            toast.textContent = 'Failed to start run — check the logs.';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 4000);
+        });
+}
+</script>
+
+<h2>Run Statistics</h2>
+<div class="stats">
+    <div class="stat">
+        <div class="label">Succeeded</div>
+        <div class="value" th:text="${stats.succeeded()}">0</div>
+    </div>
+    <div class="stat">
+        <div class="label">Failed</div>
+        <div class="value" th:text="${stats.failed()}">0</div>
+    </div>
+    <div class="stat">
+        <div class="label">Pending</div>
+        <div class="value" th:text="${stats.pending()}">0</div>
+    </div>
+    <div class="stat">
+        <div class="label">Skipped</div>
+        <div class="value" th:text="${stats.skipped()}">0</div>
+    </div>
+    <div class="stat">
+        <div class="label">Total</div>
+        <div class="value" th:text="${stats.total()}">0</div>
+    </div>
+</div>
+
+<h2>Fix History</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Repository</th>
+            <th>Issue</th>
+            <th>Status</th>
+            <th>Iterations</th>
+            <th>Completed</th>
+            <th>Report</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr th:if="${#lists.isEmpty(issues)}">
+            <td colspan="6" style="color:#999; text-align:center;">No issues processed yet.</td>
+        </tr>
+        <tr th:each="issue : ${issues}">
+            <td th:text="${issue.repoFullName}">repo</td>
+            <td>
+                <a th:href="${'https://github.com/' + issue.repoFullName + '/issues/' + issue.issueNumber}"
+                   th:text="${'#' + issue.issueNumber + ' ' + issue.issueTitle}"
+                   target="_blank">title</a>
+            </td>
+            <td>
+                <span th:classappend="${issue.status.name() == 'SUCCESS'} ? 'badge-success' : 'badge-failed'"
+                      class="badge"
+                      th:text="${issue.status}">STATUS</span>
+            </td>
+            <td th:text="${issue.iterationCount}">0</td>
+            <td th:text="${issue.completedAt != null ? #temporals.format(issue.completedAt, 'yyyy-MM-dd HH:mm') : '-'}">-</td>
+            <td>
+                <a th:href="${'/issues/' + issue.id + '/report'}">view report</a>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+<h2>Recent Runs</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Status</th>
+            <th>Scouted</th>
+            <th>Triaged</th>
+            <th>Succeeded</th>
+            <th>Tokens</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr th:if="${#lists.isEmpty(recentRuns)}">
+            <td colspan="8" style="color:#999; text-align:center;">No runs yet.</td>
+        </tr>
+        <tr th:each="run : ${recentRuns}">
+            <td th:text="${run.runId}">uuid</td>
+            <td th:text="${#temporals.format(run.startedAt, 'yyyy-MM-dd HH:mm')}">-</td>
+            <td th:text="${run.finishedAt != null ? #temporals.format(run.finishedAt, 'yyyy-MM-dd HH:mm') : 'running'}">-</td>
+            <td>
+                <span th:classappend="${run.status.name() == 'COMPLETED'} ? 'badge-success' : (${run.status.name() == 'RUNNING'} ? 'badge-running' : 'badge-failed')"
+                      class="badge"
+                      th:text="${run.status}">STATUS</span>
+            </td>
+            <td th:text="${run.issuesScouted}">0</td>
+            <td th:text="${run.issuesTriaged}">0</td>
+            <td th:text="${run.issuesSucceeded}">0</td>
+            <td th:text="${run.tokenUsage}">0</td>
+        </tr>
+    </tbody>
+</table>
+
+</body>
+</html>

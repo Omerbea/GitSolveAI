@@ -62,6 +62,10 @@ public class IssueRecord {
     @Column(name = "constraint_json", columnDefinition = "jsonb")
     private ConstraintJson constraintJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "fix_report", columnDefinition = "jsonb")
+    private com.gitsolve.model.FixReport fixReport;
+
     @Column(name = "iteration_count")
     private Integer iterationCount = 0;
 
@@ -118,6 +122,9 @@ public class IssueRecord {
 
     public ConstraintJson getConstraintJson() { return constraintJson; }
     public void setConstraintJson(ConstraintJson constraintJson) { this.constraintJson = constraintJson; }
+
+    public com.gitsolve.model.FixReport getFixReport() { return fixReport; }
+    public void setFixReport(com.gitsolve.model.FixReport fixReport) { this.fixReport = fixReport; }
 
     public Integer getIterationCount() { return iterationCount; }
     public void setIterationCount(Integer iterationCount) { this.iterationCount = iterationCount; }

@@ -1,5 +1,7 @@
 package com.gitsolve.config;
 
+import com.gitsolve.agent.reviewer.ReviewerAiService;
+import com.gitsolve.agent.reviewer.RuleExtractorAiService;
 import com.gitsolve.agent.scout.ScoutAiService;
 import com.gitsolve.agent.scout.ScoutTools;
 import com.gitsolve.agent.swe.SweAiService;
@@ -36,6 +38,7 @@ public class AgentConfig {
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
                 .modelName(props.llm().model())
                 .maxTokens(8192)
+                .maxRetries(5)   // retries on 429 rate-limit with exponential backoff
                 .build();
     }
 
@@ -79,6 +82,22 @@ public class AgentConfig {
     @ConditionalOnBean(ChatLanguageModel.class)
     public TriageAiService triageAiService(ChatLanguageModel model) {
         return AiServices.builder(TriageAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public RuleExtractorAiService ruleExtractorAiService(ChatLanguageModel model) {
+        return AiServices.builder(RuleExtractorAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public ReviewerAiService reviewerAiService(ChatLanguageModel model) {
+        return AiServices.builder(ReviewerAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
