@@ -65,14 +65,18 @@ public class DockerBuildEnvironment implements BuildEnvironment {
 
         // eclipse-temurin:21-jdk is Debian-based but doesn't include git.
         // Install it on first use. This requires network access (default bridge mode).
+        // Combine update+install in a single exec call to avoid apt lock races between
+        // separate docker exec invocations. DEBIAN_FRONTEND=noninteractive prevents
+        // debconf from trying to prompt when no TTY is attached.
         BuildOutput gitCheck = execCommand("git --version");
         if (gitCheck.exitCode() != 0) {
-            execCommand("apt-get update -qq");
             BuildOutput install = execCommand(
-                    "apt-get install -y --no-install-recommends git 2>&1");
+                    "DEBIAN_FRONTEND=noninteractive apt-get update -qq && " +
+                    "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git");
             if (install.buildFailed()) {
                 throw new BuildEnvironmentException(
-                        "Failed to install git: exit=" + install.exitCode());
+                        "Failed to install git: exit=" + install.exitCode() +
+                        " stderr=" + install.stderr());
             }
         }
 
@@ -222,12 +226,18 @@ public class DockerBuildEnvironment implements BuildEnvironment {
                 .withCpuQuota(props.docker().cpuQuota())
                 .withCpuPeriod(100_000L)
                 // NOTE: networkMode is NOT set to "none" at container creation because
-                // git clone requires network access. Instead, network isolation for the
-                // BUILD phase is enforced by the production deployment (network policy,
-                // no outbound routing from the build subnet). In CI, the container is
-                // isolated by the host network configuration.
+                // git clone requires network access (apt-get install git + git clone).
+                // Network isolation for the BUILD phase will be enforced in M8 when
+                // switching to a pre-built image that already has git installed.
                 // TODO M8: Use a pre-built image with git to enable networkMode("none").
-                .withCapDrop(Capability.ALL)
+                //
+                // NOTE: capDrop(ALL) is also deferred to M8.
+                // apt-get (used to install git) requires CAP_SETGID, CAP_SETUID, CAP_CHOWN,
+                // CAP_DAC_OVERRIDE, CAP_FOWNER to drop sandbox privileges and write package
+                // files. Dropping ALL caps prevents apt-get from working. Once we switch to
+                // a pre-built image in M8, capDrop(ALL) can be re-enabled safely because
+                // the git install step won't be needed.
+                // TODO M8: Re-enable .withCapDrop(Capability.ALL) after switching image.
                 .withSecurityOpts(List.of("no-new-privileges:true"))
                 .withPidsLimit(256L);
 
