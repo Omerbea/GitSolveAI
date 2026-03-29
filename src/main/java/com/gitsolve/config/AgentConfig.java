@@ -2,7 +2,9 @@ package com.gitsolve.config;
 
 import com.gitsolve.agent.scout.ScoutAiService;
 import com.gitsolve.agent.scout.ScoutTools;
+import com.gitsolve.agent.swe.SweAiService;
 import com.gitsolve.agent.triage.TriageAiService;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -13,6 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Scope;
 
 /**
  * Wires LangChain4j ChatLanguageModel and AiService beans.
@@ -77,6 +80,16 @@ public class AgentConfig {
     public TriageAiService triageAiService(ChatLanguageModel model) {
         return AiServices.builder(TriageAiService.class)
                 .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @Scope("prototype")
+    @ConditionalOnBean(StreamingChatLanguageModel.class)
+    public SweAiService sweAiService(StreamingChatLanguageModel model) {
+        return AiServices.builder(SweAiService.class)
+                .streamingChatLanguageModel(model)
+                .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
                 .build();
     }
 
