@@ -2,13 +2,19 @@ package com.gitsolve.docker;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
+import com.gitsolve.persistence.IssueStore;
+import com.gitsolve.persistence.SettingsStore;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,9 +44,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class DockerBuildEnvironmentIntegrationTest {
 
-    // Exclude JPA/DB — we don't need Testcontainers Postgres for Docker tests
-    @MockBean
-    com.gitsolve.persistence.IssueStore issueStore;
+    @MockBean IssueStore    issueStore;
+    @MockBean SettingsStore settingsStore;
 
     @Autowired
     ApplicationContext context;
@@ -161,6 +166,55 @@ class DockerBuildEnvironmentIntegrationTest {
                     .hasMessageContaining("..");
         } finally {
             env.close();
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // mountAndClone — bind-mount from host path                           //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    @Order(6)
+    @Timeout(120)
+    void mountAndClone_populatesWorkspaceFromHostPath(@TempDir Path tempDir) throws Exception {
+        // Create a minimal real git repo in tempDir
+        runGit(tempDir.toFile(), "git", "init");
+        runGit(tempDir.toFile(), "git", "config", "user.email", "test@gitsolve.ai");
+        runGit(tempDir.toFile(), "git", "config", "user.name", "Test");
+
+        Path srcDir = tempDir.resolve("src").resolve("main").resolve("java");
+        Files.createDirectories(srcDir);
+        Files.writeString(srcDir.resolve("Hello.java"), "public class Hello { }");
+
+        runGit(tempDir.toFile(), "git", "add", "-A");
+        runGit(tempDir.toFile(), "git", "commit", "-m", "init");
+
+        // Clone from the bind-mounted host path into the container workspace
+        try (DockerBuildEnvironment env = context.getBean(DockerBuildEnvironment.class)) {
+            env.mountAndClone(tempDir, null);
+
+            List<String> javaFiles = env.listJavaFiles("src");
+
+            assertThat(javaFiles).isNotEmpty();
+            assertThat(javaFiles).anyMatch(f -> f.endsWith("Hello.java"));
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // Git helper for test setup                                           //
+    // ------------------------------------------------------------------ //
+
+    private static void runGit(File workDir, String... cmd) throws Exception {
+        Process p = new ProcessBuilder(cmd)
+                .directory(workDir)
+                .redirectErrorStream(true)
+                .start();
+        byte[] out = p.getInputStream().readAllBytes();
+        int exit = p.waitFor();
+        if (exit != 0) {
+            throw new RuntimeException(
+                    "git command failed (exit=" + exit + "): " +
+                    String.join(" ", cmd) + "\n" + new String(out));
         }
     }
 }

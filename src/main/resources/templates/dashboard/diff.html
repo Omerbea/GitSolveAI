@@ -4,44 +4,536 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${'Diff — #' + issue.issueNumber + ' ' + issue.issueTitle}">Diff</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
-        h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-        .meta { color: #666; font-size: 0.875rem; margin-bottom: 1.5rem; }
-        a { color: #2563eb; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        pre {
-            background: #f8f8f8;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 1rem;
-            overflow-x: auto;
-            font-size: 0.825rem;
-            line-height: 1.5;
-            white-space: pre;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --indigo-50:  #eef2ff;
+            --indigo-100: #e0e7ff;
+            --indigo-500: #6366f1;
+            --indigo-600: #4f46e5;
+            --indigo-700: #4338ca;
+            --slate-50:   #f8fafc;
+            --slate-100:  #f1f5f9;
+            --slate-200:  #e2e8f0;
+            --slate-300:  #cbd5e1;
+            --slate-400:  #94a3b8;
+            --slate-500:  #64748b;
+            --slate-600:  #475569;
+            --slate-700:  #334155;
+            --slate-800:  #1e293b;
+            --slate-900:  #0f172a;
+            --green-50:   #f0fdf4;
+            --green-800:  #166534;
+            --green-900:  #14532d;
+            --red-50:     #fff1f2;
+            --red-800:    #991b1b;
+            --red-900:    #7f1d1d;
+            --sidebar-width: 240px;
+            --topbar-h: 64px;
         }
-        .line-add    { color: #166534; background: #f0fdf4; display: block; }
-        .line-remove { color: #991b1b; background: #fff1f2; display: block; }
-        .line-meta   { color: #6366f1; display: block; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--slate-50);
+            color: var(--slate-900);
+            display: flex;
+            min-height: 100vh;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: var(--slate-900);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            z-index: 50;
+            overflow-y: auto;
+        }
+
+        .sidebar__brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 20px;
+            height: var(--topbar-h);
+            border-bottom: 1px solid var(--slate-800);
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .sidebar__brand-icon {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar__brand-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.01em;
+        }
+
+        .sidebar__nav {
+            padding: 12px;
+            flex: 1;
+        }
+
+        .sidebar__nav-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--slate-600);
+            padding: 0 8px;
+            margin-bottom: 6px;
+            margin-top: 4px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--slate-400);
+            text-decoration: none;
+            transition: background 100ms ease, color 100ms ease;
+            position: relative;
+        }
+
+        .nav-item:hover { background: var(--slate-800); color: var(--slate-200); text-decoration: none; }
+
+        .nav-item.active {
+            background: var(--slate-800);
+            color: #fff;
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 6px; bottom: 6px;
+            width: 3px;
+            background: var(--indigo-500);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+        .nav-item.active svg { opacity: 1; }
+
+        .sidebar__footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--slate-800);
+            flex-shrink: 0;
+        }
+
+        .sidebar__footer-text {
+            font-size: 11px;
+            color: var(--slate-600);
+            line-height: 1.6;
+        }
+
+        /* Main */
+        .layout__main {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* Topbar */
+        .topbar {
+            height: var(--topbar-h);
+            background: #fff;
+            border-bottom: 1px solid var(--slate-200);
+            display: flex;
+            align-items: center;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            flex-shrink: 0;
+            gap: 16px;
+        }
+
+        /* Breadcrumb */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .breadcrumb__link {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--slate-500);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 150ms ease;
+        }
+
+        .breadcrumb__link:hover { color: var(--indigo-600); text-decoration: none; }
+        .breadcrumb__link svg { width: 14px; height: 14px; }
+
+        .breadcrumb__sep { color: var(--slate-300); font-size: 16px; line-height: 1; }
+
+        .breadcrumb__current {
+            color: var(--slate-700);
+            font-weight: 600;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Page content */
+        .page-content {
+            padding: 32px;
+            flex: 1;
+            animation: fadeInUp 300ms ease both;
+        }
+
+        /* Issue header */
+        .issue-header {
+            margin-bottom: 24px;
+        }
+
+        .issue-header__title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--slate-900);
+            line-height: 1.3;
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .issue-header__meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--slate-100);
+            color: var(--slate-600);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-failed  { background: #fee2e2; color: #991b1b; }
+        .badge-running { background: #dbeafe; color: #1d40af; }
+        .badge-gray    { background: var(--slate-100); color: var(--slate-600); }
+
+        /* Diff container */
+        .diff-container {
+            background: #fff;
+            border: 1px solid var(--slate-200);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .diff-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: var(--slate-50);
+            border-bottom: 1px solid var(--slate-200);
+        }
+
+        .diff-header__filename {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--slate-600);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .diff-header__filename svg { width: 13px; height: 13px; color: var(--slate-400); }
+
+        .diff-legend {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 11px;
+            color: var(--slate-500);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .legend-dot {
+            width: 8px; height: 8px;
+            border-radius: 2px;
+        }
+
+        .legend-dot--add    { background: #22c55e; }
+        .legend-dot--remove { background: #ef4444; }
+        .legend-dot--meta   { background: var(--indigo-500); }
+
+        /* Diff viewer */
+        .diff-viewer {
+            overflow-x: auto;
+        }
+
+        /* The pre element with th:text — we style it as a monospace block */
+        .diff-pre {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12.5px;
+            line-height: 1.6;
+            white-space: pre;
+            padding: 0;
+            margin: 0;
+            background: #fff;
+            color: var(--slate-700);
+            counter-reset: diff-line;
+            border: none;
+            border-radius: 0;
+            overflow-x: visible;
+        }
+
+        /*
+         * The diff text rendered by th:text into the <pre> is plain text.
+         * We style the pre container itself with a left padding to simulate a gutter,
+         * using a pseudo-element bar. Individual line coloring via CSS isn't possible
+         * on plain text inside a <pre>, so we style the container to clearly frame the diff.
+         */
+        .diff-inner {
+            display: flex;
+        }
+
+        .diff-gutter {
+            background: var(--slate-50);
+            border-right: 1px solid var(--slate-200);
+            padding: 16px 12px 16px 16px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12px;
+            color: var(--slate-400);
+            white-space: pre;
+            user-select: none;
+            min-width: 52px;
+            text-align: right;
+            flex-shrink: 0;
+            line-height: 1.6;
+        }
+
+        .diff-code {
+            flex: 1;
+            padding: 16px 20px;
+            overflow-x: auto;
+        }
+
+        /* Styled pre inside diff-code */
+        .diff-code pre {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12.5px;
+            line-height: 1.6;
+            white-space: pre;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            margin: 0;
+            color: var(--slate-700);
+            overflow-x: visible;
+        }
+
+        /* Line-level coloring via spans injected by JS post-render */
+        .line-add    { color: var(--green-800); background: var(--green-50);    display: block; margin: 0 -20px; padding: 0 20px; }
+        .line-remove { color: var(--red-800);   background: var(--red-50);      display: block; margin: 0 -20px; padding: 0 20px; }
+        .line-meta   { color: var(--indigo-600); background: var(--indigo-50);  display: block; margin: 0 -20px; padding: 0 20px; font-weight: 600; }
+
+        /* Empty diff */
+        .diff-empty {
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--slate-400);
+            font-size: 13px;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .page-content { animation: none; }
+        }
     </style>
 </head>
 <body>
 
-<p><a href="/">← Back to dashboard</a></p>
+<!-- Sidebar -->
+<nav class="sidebar" role="navigation" aria-label="Main navigation">
+    <a class="sidebar__brand" href="/">
+        <div class="sidebar__brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;width:16px;height:16px">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+        </div>
+        <span class="sidebar__brand-name">GitSolve AI</span>
+    </a>
 
-<h1 th:text="${'#' + issue.issueNumber + ' ' + issue.issueTitle}">Issue title</h1>
-<div class="meta">
-    <span th:text="${issue.repoFullName}">repo</span>
-    &nbsp;·&nbsp;
-    <span th:text="${issue.status}">STATUS</span>
-    &nbsp;·&nbsp;
-    <span th:text="${issue.iterationCount + ' iteration(s)'}">0 iteration(s)</span>
-    <span th:if="${issue.fixSummary != null}">
-        &nbsp;·&nbsp; <em th:text="${issue.fixSummary}">summary</em>
-    </span>
+    <div class="sidebar__nav">
+        <div class="sidebar__nav-label">Navigation</div>
+
+        <a href="/" class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            Dashboard
+        </a>
+
+        <a href="/settings" class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Settings
+        </a>
+    </div>
+
+    <div class="sidebar__footer">
+        <div class="sidebar__footer-text">Autonomous Java issue fixer</div>
+    </div>
+</nav>
+
+<!-- Main -->
+<div class="layout__main">
+
+    <!-- Topbar with breadcrumb -->
+    <header class="topbar">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a class="breadcrumb__link" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Dashboard
+            </a>
+            <span class="breadcrumb__sep" aria-hidden="true">/</span>
+            <span class="breadcrumb__current" th:text="${'#' + issue.issueNumber + ' ' + issue.issueTitle}">Issue title</span>
+        </nav>
+    </header>
+
+    <main class="page-content">
+
+        <!-- Issue header -->
+        <div class="issue-header">
+            <h1 class="issue-header__title" th:text="${'#' + issue.issueNumber + ' ' + issue.issueTitle}">Issue title</h1>
+            <div class="issue-header__meta">
+                <span class="chip" th:text="${issue.repoFullName}">repo</span>
+                <span class="badge"
+                      th:classappend="${issue.status.name() == 'SUCCEEDED'} ? 'badge-success' : (${issue.status.name() == 'RUNNING'} ? 'badge-running' : (${issue.status.name() == 'FAILED'} ? 'badge-failed' : 'badge-gray'))"
+                      th:text="${issue.status}">STATUS</span>
+                <span class="chip" th:text="${issue.iterationCount + ' iteration(s)'}">0 iterations</span>
+                <span class="chip" th:if="${issue.fixSummary != null}" th:text="${issue.fixSummary}">summary</span>
+            </div>
+        </div>
+
+        <!-- Diff viewer -->
+        <div class="diff-container">
+            <div class="diff-header">
+                <div class="diff-header__filename">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    Patch diff
+                </div>
+                <div class="diff-legend">
+                    <span class="legend-item"><span class="legend-dot legend-dot--add"></span>Added</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot--remove"></span>Removed</span>
+                    <span class="legend-item"><span class="legend-dot legend-dot--meta"></span>Hunk</span>
+                </div>
+            </div>
+            <div class="diff-viewer">
+                <div class="diff-inner">
+                    <div class="diff-gutter" id="diffGutter" aria-hidden="true"></div>
+                    <div class="diff-code">
+                        <pre id="diffContent" th:text="${diff}">No diff available</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
 </div>
 
-<pre th:text="${diff}">No diff available</pre>
+<script>
+(function() {
+    var pre = document.getElementById('diffContent');
+    var gutter = document.getElementById('diffGutter');
+    if (!pre || !gutter) return;
+
+    var rawText = pre.textContent;
+    var lines = rawText.split('\n');
+
+    // Build line numbers in gutter
+    var gutterLines = lines.map(function(_, i) { return i + 1; });
+    gutter.textContent = gutterLines.join('\n');
+
+    // Build colored HTML for diff lines
+    var html = lines.map(function(line) {
+        var escaped = line
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+            return '<span class="line-add">' + escaped + '</span>';
+        } else if (line.startsWith('-') && !line.startsWith('---')) {
+            return '<span class="line-remove">' + escaped + '</span>';
+        } else if (line.startsWith('@')) {
+            return '<span class="line-meta">' + escaped + '</span>';
+        } else {
+            return escaped;
+        }
+    }).join('\n');
+
+    pre.innerHTML = html;
+})();
+</script>
 
 </body>
 </html>

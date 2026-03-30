@@ -49,6 +49,8 @@ public class DockerBuildEnvironment implements BuildEnvironment {
 
     private String containerId;
     private boolean closed = false;
+    /** Set before calling ensureContainerRunning() when a bind-mount is needed. */
+    private java.nio.file.Path hostMountPath = null;
 
     public DockerBuildEnvironment(DockerClient dockerClient, GitSolveProperties props) {
         this.dockerClient = dockerClient;
@@ -59,26 +61,30 @@ public class DockerBuildEnvironment implements BuildEnvironment {
     // BuildEnvironment implementation                                     //
     // ------------------------------------------------------------------ //
 
-    @Override
-    public void cloneRepository(String cloneUrl, String branch) throws BuildEnvironmentException {
-        ensureContainerRunning();
-
-        // eclipse-temurin:21-jdk is Debian-based but doesn't include git.
-        // Install it on first use. This requires network access (default bridge mode).
-        // Combine update+install in a single exec call to avoid apt lock races between
-        // separate docker exec invocations. DEBIAN_FRONTEND=noninteractive prevents
-        // debconf from trying to prompt when no TTY is attached.
+    /**
+     * Installs git and Maven in the container if not already present.
+     * Runs a single apt-get call combining both to avoid lock races.
+     * TODO M8: Remove once switching to a pre-built image with both tools.
+     */
+    private void ensureToolsInstalled() throws BuildEnvironmentException {
         BuildOutput gitCheck = execCommand("git --version");
-        if (gitCheck.exitCode() != 0) {
+        BuildOutput mvnCheck = execCommand("mvn --version");
+        if (gitCheck.exitCode() != 0 || mvnCheck.exitCode() != 0) {
             BuildOutput install = execCommand(
                     "DEBIAN_FRONTEND=noninteractive apt-get update -qq && " +
-                    "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git");
+                    "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git maven");
             if (install.buildFailed()) {
                 throw new BuildEnvironmentException(
-                        "Failed to install git: exit=" + install.exitCode() +
+                        "Failed to install tools: exit=" + install.exitCode() +
                         " stderr=" + install.stderr());
             }
         }
+    }
+
+    @Override
+    public void cloneRepository(String cloneUrl, String branch) throws BuildEnvironmentException {
+        ensureContainerRunning();
+        ensureToolsInstalled();
 
         String cmd;
         if (branch != null && !branch.isBlank()) {
@@ -93,6 +99,43 @@ public class DockerBuildEnvironment implements BuildEnvironment {
                     "git clone failed (exit=" + result.exitCode() + "): " + result.stderr());
         }
         log.debug("Cloned {} (branch={}) into container {}", cloneUrl, branch, containerId);
+    }
+
+    /**
+     * Mounts {@code hostRepoPath} read-only at {@code /repo-cache} inside the container and
+     * clones from it into {@code /workspace} using a local {@code file://} clone.
+     *
+     * <p>No network access required — the clone source is the bind-mounted host directory.
+     * This sets {@link #hostMountPath} before starting the container so the bind-mount is
+     * applied at container-creation time (not after the fact).
+     */
+    @Override
+    public void mountAndClone(java.nio.file.Path hostRepoPath, String branch)
+            throws BuildEnvironmentException {
+        if (containerId != null) {
+            throw new BuildEnvironmentException(
+                "mountAndClone() must be called before any other operation — container already started");
+        }
+        this.hostMountPath = hostRepoPath;
+        ensureContainerRunning();
+
+        // Install git and Maven if not present (same as cloneRepository — needed until M8 pre-built image)
+        ensureToolsInstalled();
+
+        String cmd;
+        if (branch != null && !branch.isBlank()) {
+            cmd = "git clone --no-local --branch " + branch + " file:///repo-cache " + WORKSPACE;
+        } else {
+            cmd = "git clone --no-local file:///repo-cache " + WORKSPACE;
+        }
+
+        BuildOutput result = execCommand(cmd);
+        if (result.buildFailed()) {
+            throw new BuildEnvironmentException(
+                "git clone from bind-mount failed (exit=" + result.exitCode() + "): " + result.stderr());
+        }
+        log.debug("Cloned from bind-mount {} (branch={}) into container {}",
+                hostRepoPath, branch, containerId);
     }
 
     @Override
@@ -240,6 +283,14 @@ public class DockerBuildEnvironment implements BuildEnvironment {
                 // TODO M8: Re-enable .withCapDrop(Capability.ALL) after switching image.
                 .withSecurityOpts(List.of("no-new-privileges:true"))
                 .withPidsLimit(256L);
+
+        // If a host mount path was set (mountAndClone path), bind it read-only at /repo-cache.
+        if (hostMountPath != null) {
+            hostConfig.withBinds(new Bind(
+                    hostMountPath.toAbsolutePath().toString(),
+                    new Volume("/repo-cache"),
+                    AccessMode.ro));
+        }
 
         try {
             // Pull image if not present (silently ignore pull errors — image may already exist)

@@ -5,6 +5,8 @@ import com.gitsolve.persistence.entity.IssueRecord;
 import com.gitsolve.persistence.entity.RunLog;
 import com.gitsolve.persistence.entity.TokenUsageRecord;
 import com.gitsolve.persistence.repository.IssueRecordRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.gitsolve.persistence.repository.RunLogRepository;
 import com.gitsolve.persistence.repository.TokenUsageRecordRepository;
 import org.springframework.data.domain.PageRequest;
@@ -25,6 +27,8 @@ import java.util.UUID;
 @Service
 @Transactional
 public class IssueStore {
+
+    private static final Logger log = LoggerFactory.getLogger(IssueStore.class);
 
     private final IssueRecordRepository      repository;
     private final RunLogRepository           runLogRepository;
@@ -119,13 +123,82 @@ public class IssueStore {
     }
 
     /**
+     * Records that the user viewed the report for this issue.
+     * Only sets the timestamp on first view — subsequent calls are no-ops.
+     */
+    public void markReportViewed(Long id) {
+        IssueRecord record = findOrThrow(id);
+        if (record.getReportViewedAt() == null) {
+            record.setReportViewedAt(Instant.now());
+            repository.save(record);
+        }
+    }
+
+    /**
+     * Persists AI-generated fix instructions onto the issue record.
+     * Called from the dashboard on demand when the user clicks "Generate Fix Instructions".
+     */
+    public void saveFixInstructions(Long id, String instructions) {
+        IssueRecord record = findOrThrow(id);
+        record.setFixInstructions(instructions);
+        repository.save(record);
+    }
+
+    /**
+     * Marks the record as EXECUTING — execution agent has started working.
+     */
+    public void markExecuting(Long id) {
+        IssueRecord record = findOrThrow(id);
+        record.setExecutionStatus("EXECUTING");
+        repository.save(record);
+    }
+
+    /**
+     * Marks the record as PR_SUBMITTED and stores the PR URL.
+     */
+    public void markPrSubmitted(Long id, String prUrl) {
+        IssueRecord record = findOrThrow(id);
+        record.setExecutionStatus("PR_SUBMITTED");
+        record.setPrUrl(prUrl);
+        repository.save(record);
+    }
+
+    /**
+     * Marks the record as EXECUTION_FAILED and stores the failure reason.
+     * Does not overwrite the existing failureReason from analysis — stores in executionStatus only.
+     */
+    public void markExecutionFailed(Long id, String reason) {
+        IssueRecord record = findOrThrow(id);
+        record.setExecutionStatus("EXECUTION_FAILED");
+        record.setFailureReason(reason);
+        repository.save(record);
+    }
+
+    /**
      * Persists a {@link com.gitsolve.model.FixReport} onto the issue record.
      * Called after every SWE Agent attempt — success or failure.
      */
-    public void saveFixReport(Long id, com.gitsolve.model.FixReport report) {
+    public void saveFixReport(Long id, FixReport report) {
         IssueRecord record = findOrThrow(id);
         record.setFixReport(report);
         repository.save(record);
+    }
+
+    /**
+     * Deletes all issue records. Used by the dashboard reset action.
+     * This clears the dedup table so fresh runs can reprocess the same issues.
+     */
+    public void deleteAllIssues() {
+        log.info("IssueStore: deleting all {} issue records", repository.count());
+        repository.deleteAll();
+    }
+
+    /**
+     * Returns total count of issue records.
+     */
+    @Transactional(readOnly = true)
+    public long countAllIssues() {
+        return repository.count();
     }
 
     /**

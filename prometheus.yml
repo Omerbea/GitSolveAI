@@ -1,0 +1,17 @@
+# prometheus.yml
+# Scrapes the GitSolve AI Spring Boot app's /actuator/prometheus endpoint.
+# host.docker.internal resolves to the host machine from inside Docker.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gitsolve-ai
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - host.docker.internal:8080
+    relabel_configs:
+      - target_label: application
+        replacement: gitsolve-ai

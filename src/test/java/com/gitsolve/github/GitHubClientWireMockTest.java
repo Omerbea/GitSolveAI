@@ -211,4 +211,83 @@ class GitHubClientWireMockTest {
         verify(RateLimitRetryFilter.MAX_RETRIES + 1,
                 getRequestedFor(urlPathEqualTo("/search/repositories")));
     }
+
+    // ------------------------------------------------------------------ //
+    // forkRepo                                                             //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void forkRepo_createsAndReturnsForkFullName() {
+        stubFor(post(urlPathEqualTo("/repos/apache/commons-lang/forks"))
+                .willReturn(aResponse()
+                        .withStatus(202)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "id": 999,
+                                  "full_name": "gitsolvebot/commons-lang",
+                                  "clone_url": "https://github.com/gitsolvebot/commons-lang.git"
+                                }
+                                """)));
+
+        String result = client.forkRepo("apache/commons-lang").block();
+
+        assertThat(result).isEqualTo("gitsolvebot/commons-lang");
+        verify(postRequestedFor(urlPathEqualTo("/repos/apache/commons-lang/forks"))
+                .withHeader("Authorization", equalTo("Bearer test-token")));
+    }
+
+    // ------------------------------------------------------------------ //
+    // createGitHubPr                                                       //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void createGitHubPr_returnsHtmlUrl() {
+        stubFor(post(urlPathEqualTo("/repos/apache/commons-lang/pulls"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                  "number": 99,
+                                  "html_url": "https://github.com/apache/commons-lang/pull/99",
+                                  "state": "open"
+                                }
+                                """)));
+
+        String prUrl = client.createGitHubPr(
+                "apache/commons-lang",
+                "gitsolvebot/commons-lang",
+                "gitsolve/issue-42",
+                "fix: resolve NPE in StringUtils",
+                "Closes #42\n\nThis PR fixes the NPE."
+        ).block();
+
+        assertThat(prUrl).isEqualTo("https://github.com/apache/commons-lang/pull/99");
+
+        // Verify the head field uses forkOwner:branch format
+        verify(postRequestedFor(urlPathEqualTo("/repos/apache/commons-lang/pulls"))
+                .withRequestBody(matchingJsonPath("$.head", equalTo("gitsolvebot:gitsolve/issue-42")))
+                .withRequestBody(matchingJsonPath("$.base", equalTo("main"))));
+    }
+
+    @Test
+    void createGitHubPr_propagatesErrorOnNon2xx() {
+        stubFor(post(urlPathEqualTo("/repos/apache/commons-lang/pulls"))
+                .willReturn(aResponse()
+                        .withStatus(422)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"message": "Validation Failed", "errors": []}
+                                """)));
+
+        assertThatThrownBy(() -> client.createGitHubPr(
+                "apache/commons-lang",
+                "gitsolvebot/commons-lang",
+                "gitsolve/issue-42",
+                "fix: test",
+                "Closes #42"
+        ).block())
+                .isInstanceOf(Exception.class);
+    }
 }

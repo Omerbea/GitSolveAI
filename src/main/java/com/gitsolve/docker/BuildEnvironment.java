@@ -25,6 +25,21 @@ public interface BuildEnvironment extends AutoCloseable {
     void cloneRepository(String cloneUrl, String branch) throws BuildEnvironmentException;
 
     /**
+     * Mounts a host-side git repository directory as a read-only volume and clones from it
+     * into the container workspace using a local file:// clone.
+     *
+     * <p>This avoids any outbound network calls for the clone step — the container only
+     * needs the host path to be accessible.  The container must be (re)created with the
+     * bind-mount active, so calling this method will stop/remove any existing container
+     * and start a fresh one with the additional volume.
+     *
+     * @param hostRepoPath absolute path on the host to the cloned repo directory
+     * @param branch       branch to checkout, or null for the default branch
+     * @throws BuildEnvironmentException if the bind-mount or clone fails
+     */
+    void mountAndClone(java.nio.file.Path hostRepoPath, String branch) throws BuildEnvironmentException;
+
+    /**
      * Reads a file from the container workspace.
      * Returns empty if the file does not exist.
      * Files larger than 10,000 lines are truncated.

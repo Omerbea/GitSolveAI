@@ -26,14 +26,21 @@ public record BuildOutput(
     }
 
     /**
-     * Extracts the most relevant portion of stderr for LLM consumption.
-     * Returns the last 100 lines of stderr, or all of stderr if fewer than 100 lines.
+     * Extracts the most relevant portion of build output for LLM consumption.
+     * Combines stdout and stderr (Maven compiler errors appear on stdout),
+     * then returns the last 150 lines to capture errors near the end of output.
      */
     public String extractStackTrace() {
-        if (stderr == null || stderr.isBlank()) return "";
-        String[] lines = stderr.split("\n");
-        if (lines.length <= 100) return stderr;
-        return Arrays.stream(lines, lines.length - 100, lines.length)
+        StringBuilder combined = new StringBuilder();
+        if (stdout != null && !stdout.isBlank()) combined.append(stdout);
+        if (stderr != null && !stderr.isBlank()) {
+            if (combined.length() > 0) combined.append("\n");
+            combined.append(stderr);
+        }
+        if (combined.isEmpty()) return "";
+        String[] lines = combined.toString().split("\n");
+        if (lines.length <= 150) return combined.toString();
+        return Arrays.stream(lines, lines.length - 150, lines.length)
                 .collect(Collectors.joining("\n"));
     }
 }

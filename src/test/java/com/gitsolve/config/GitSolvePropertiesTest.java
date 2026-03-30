@@ -1,5 +1,7 @@
 package com.gitsolve.config;
 
+import com.gitsolve.persistence.IssueStore;
+import com.gitsolve.persistence.SettingsStore;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,20 +14,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Verifies that GitSolveProperties binds correctly when all required fields are present.
  * Excludes DB/JPA auto-configuration to avoid needing a live Postgres in unit tests.
- * MockBean IssueStore prevents wiring failure when JPA is excluded.
+ * MockBean IssueStore/SettingsStore prevents wiring failure when JPA is excluded.
  */
 @Tag("unit")
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
-        classes = {
-                com.gitsolve.GitSolveApplication.class
-        }
+        classes = { com.gitsolve.GitSolveApplication.class }
 )
 @ActiveProfiles("test")
 class GitSolvePropertiesTest {
 
-    @MockBean
-    com.gitsolve.persistence.IssueStore issueStore;
+    @MockBean IssueStore    issueStore;
+    @MockBean SettingsStore settingsStore;
 
     @Autowired
     GitSolveProperties props;

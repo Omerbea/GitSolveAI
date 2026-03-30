@@ -1,53 +1,42 @@
 package com.gitsolve.orchestration;
 
-import com.gitsolve.agent.reviewer.ReviewerService;
+import com.gitsolve.agent.analysis.AnalysisResult;
+import com.gitsolve.agent.analysis.AnalysisService;
 import com.gitsolve.agent.scout.ScoutService;
-import com.gitsolve.agent.swe.SweService;
 import com.gitsolve.agent.triage.TriageService;
 import com.gitsolve.config.GitSolveProperties;
+import com.gitsolve.dashboard.SseEmitterRegistry;
 import com.gitsolve.model.*;
 import com.gitsolve.persistence.IssueStore;
+import com.gitsolve.persistence.SettingsStore;
 import com.gitsolve.persistence.entity.IssueRecord;
+import com.gitsolve.persistence.entity.RunLog;
 import com.gitsolve.telemetry.AgentMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationContext;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for FixLoopOrchestrator — no Spring context, pure Mockito mocks.
- *
- * SweService is obtained via ApplicationContext.getBean(SweService.class) per issue,
- * so ApplicationContext is mocked to return a fresh mock SweService.
  */
 @Tag("unit")
 class FixLoopOrchestratorTest {
 
-    // ------------------------------------------------------------------ //
-    // Mocks                                                                //
-    // ------------------------------------------------------------------ //
-
     private ScoutService       mockScout;
     private TriageService      mockTriage;
-    private SweService         mockSwe;
-    private ReviewerService    mockReviewer;
-    private com.gitsolve.agent.reporter.ReporterService mockReporter;
+    private AnalysisService    mockAnalysis;
     private IssueStore         mockIssueStore;
     private AgentMetrics       mockMetrics;
-    private ApplicationContext mockContext;
     private GitSolveProperties mockProps;
 
     private FixLoopOrchestrator orchestrator;
-
-    // ------------------------------------------------------------------ //
-    // Fixtures                                                             //
-    // ------------------------------------------------------------------ //
 
     private static final GitRepository REPO = new GitRepository(
             "apache/commons-lang",
@@ -66,16 +55,12 @@ class FixLoopOrchestratorTest {
 
     @BeforeEach
     void setUp() {
-        mockScout    = mock(ScoutService.class);
-        mockTriage   = mock(TriageService.class);
-        mockSwe      = mock(SweService.class);
-        mockReviewer = mock(ReviewerService.class);
-        mockReporter = mock(com.gitsolve.agent.reporter.ReporterService.class);
+        mockScout      = mock(ScoutService.class);
+        mockTriage     = mock(TriageService.class);
+        mockAnalysis   = mock(AnalysisService.class);
         mockIssueStore = mock(IssueStore.class);
-        mockMetrics  = mock(AgentMetrics.class);
-        mockContext  = mock(ApplicationContext.class);
+        mockMetrics    = mock(AgentMetrics.class);
 
-        // Wire GitSolveProperties mocks
         mockProps = mock(GitSolveProperties.class);
         GitSolveProperties.GitHub github = mock(GitSolveProperties.GitHub.class);
         GitSolveProperties.Llm    llm    = mock(GitSolveProperties.Llm.class);
@@ -84,107 +69,76 @@ class FixLoopOrchestratorTest {
         when(github.maxReposPerRun()).thenReturn(1);
         when(github.maxIssuesPerRepo()).thenReturn(5);
         when(llm.maxTokensPerRun()).thenReturn(500_000);
-        when(llm.maxIterationsPerFix()).thenReturn(5);
-        when(llm.model()).thenReturn("claude-3-5-sonnet-20241022");
+        when(llm.model()).thenReturn("claude-haiku-4-5-20251001");
+
+        SettingsStore mockSettings = mock(SettingsStore.class);
+        when(mockSettings.load()).thenReturn(AppSettings.defaults());
+
+        SseEmitterRegistry mockSse = mock(SseEmitterRegistry.class);
 
         orchestrator = new FixLoopOrchestrator(
-                mockScout, mockTriage, mockReviewer,
-                mockReporter,
-                mockIssueStore, mockMetrics, mockProps, mockContext);
+                mockScout, mockTriage, mockAnalysis,
+                mockIssueStore, mockSettings, mockMetrics, mockProps, mockSse);
 
-        // Stub run lifecycle — new calls added in M007
-        com.gitsolve.persistence.entity.RunLog mockRunLog =
-                new com.gitsolve.persistence.entity.RunLog();
+        RunLog mockRunLog = new RunLog();
         mockRunLog.setId(10L);
-        mockRunLog.setRunId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        mockRunLog.setRunId(UUID.fromString("00000000-0000-0000-0000-000000000001"));
         when(mockIssueStore.startRun()).thenReturn(mockRunLog);
 
-        // Default scout stubs
         when(mockScout.discoverTargetRepos(anyInt())).thenReturn(List.of(REPO));
         when(mockScout.fetchGoodFirstIssues(any(), anyInt())).thenReturn(List.of(ISSUE));
-
-        // Default: issue not yet in DB
         when(mockIssueStore.findExisting(anyString(), anyInt())).thenReturn(Optional.empty());
-
-        // Default: createPending returns a record with id=1
         when(mockIssueStore.createPending(any())).thenReturn(issueRecord(1L));
 
-        // Default: SweService obtained from context
-        when(mockContext.getBean(SweService.class)).thenReturn(mockSwe);
-
-        // Default: reporter returns a minimal fix report
-        when(mockReporter.generateReport(any(), any()))
-                .thenReturn(new com.gitsolve.model.FixReport(
-                        "title", "url", "body", "analysis", "", "", "", "FAILED", 0,
-                        List.of(), java.time.Instant.now()));
+        when(mockAnalysis.analyse(any(), any())).thenReturn(new AnalysisResult(
+                "Root cause: missing null check.",
+                List.of("src/main/java/StringUtils.java"),
+                "Add a null guard before the isEmpty call.",
+                "EASY",
+                "Null-check pattern already used in adjacent methods."
+        ));
     }
 
     // ------------------------------------------------------------------ //
-    // TC-01: Success path — fix accepted by reviewer                      //
+    // TC-01: Happy path — issue gets analysed and marked SUCCESS          //
     // ------------------------------------------------------------------ //
 
     @Test
-    void runFixLoop_successPath_markSuccessCalled() throws Exception {
+    void runFixLoop_happyPath_markSuccessCalled() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockSwe.fix(any()))
-                .thenReturn(fixResult(true, "+Objects.requireNonNull(value);", null, 2));
-        when(mockReviewer.review(any(), any()))
-                .thenReturn(new ReviewResult(true, List.of(), "Fix looks good."));
 
         orchestrator.runFixLoop();
 
-        verify(mockIssueStore).markSuccess(eq(1L), anyString(), anyString(), eq(2));
+        verify(mockIssueStore).markSuccess(eq(1L), anyString(), anyString(), eq(0));
         verify(mockMetrics).recordIssueSucceeded();
-        verify(mockMetrics).recordIterationCount(2);
         verify(mockIssueStore, never()).markFailed(anyLong(), anyString(), anyInt());
     }
 
     // ------------------------------------------------------------------ //
-    // TC-02: SWE failure — fix loop exhausted                             //
+    // TC-02: Analysis throws — issue marked FAILED                        //
     // ------------------------------------------------------------------ //
 
     @Test
-    void runFixLoop_sweFailure_markFailedWithReason() throws Exception {
+    void runFixLoop_analysisThrows_markFailedCalled() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockSwe.fix(any()))
-                .thenReturn(fixResult(false, "", "Exhausted 5 iterations", 5));
+        when(mockAnalysis.analyse(any(), any()))
+                .thenThrow(new RuntimeException("LLM timeout"));
 
         orchestrator.runFixLoop();
 
-        verify(mockIssueStore).markFailed(eq(1L), contains("Exhausted"), eq(5));
-        verify(mockMetrics).recordIssueFailed("swe_failed");
+        verify(mockIssueStore).markFailed(eq(1L), contains("Analysis error"), eq(0));
+        verify(mockMetrics).recordIssueFailed("analysis_error");
         verify(mockIssueStore, never()).markSuccess(anyLong(), anyString(), anyString(), anyInt());
     }
 
     // ------------------------------------------------------------------ //
-    // TC-03: Reviewer rejection — fix valid but violates constraints      //
+    // TC-03: Already processed — createPending never called               //
     // ------------------------------------------------------------------ //
 
     @Test
-    void runFixLoop_reviewerRejects_markFailedWithReviewerRejectedReason() throws Exception {
-        when(mockTriage.triageBatch(any()))
-                .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockSwe.fix(any()))
-                .thenReturn(fixResult(true, "+System.out.println(\"debug\");", null, 1));
-        when(mockReviewer.review(any(), any()))
-                .thenReturn(new ReviewResult(false,
-                        List.of("System.out.println is forbidden"), "Violation found."));
-
-        orchestrator.runFixLoop();
-
-        verify(mockIssueStore).markFailed(eq(1L), contains("Reviewer rejected"), eq(1));
-        verify(mockMetrics).recordIssueFailed("reviewer_rejected");
-        verify(mockIssueStore, never()).markSuccess(anyLong(), anyString(), anyString(), anyInt());
-    }
-
-    // ------------------------------------------------------------------ //
-    // TC-04: Already processed — createPending never called               //
-    // ------------------------------------------------------------------ //
-
-    @Test
-    void runFixLoop_alreadyProcessed_createPendingNeverCalled() throws Exception {
+    void runFixLoop_alreadyProcessed_createPendingNeverCalled() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
         when(mockIssueStore.findExisting(anyString(), eq(42)))
@@ -193,15 +147,15 @@ class FixLoopOrchestratorTest {
         orchestrator.runFixLoop();
 
         verify(mockIssueStore, never()).createPending(any());
-        verify(mockSwe, never()).fix(any());
+        verify(mockAnalysis, never()).analyse(any(), any());
     }
 
     // ------------------------------------------------------------------ //
-    // TC-05: Token budget exhausted before processing                     //
+    // TC-04: Token budget zero — no issues processed                      //
     // ------------------------------------------------------------------ //
 
     @Test
-    void runFixLoop_tokenBudgetZero_noIssuesProcessed() throws Exception {
+    void runFixLoop_tokenBudgetZero_noIssuesProcessed() {
         when(mockProps.llm().maxTokensPerRun()).thenReturn(0);
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
@@ -209,7 +163,23 @@ class FixLoopOrchestratorTest {
         orchestrator.runFixLoop();
 
         verify(mockIssueStore, never()).createPending(any());
-        verify(mockSwe, never()).fix(any());
+        verify(mockAnalysis, never()).analyse(any(), any());
+    }
+
+    // ------------------------------------------------------------------ //
+    // TC-05: Fix report saved after successful analysis                   //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void runFixLoop_happyPath_fixReportSaved() {
+        when(mockTriage.triageBatch(any()))
+                .thenReturn(List.of(triageResult(ISSUE)));
+
+        orchestrator.runFixLoop();
+
+        verify(mockIssueStore).saveFixReport(eq(1L), argThat(r ->
+                r.buildStatus().equals("ANALYSED") &&
+                r.rootCauseAnalysis().contains("null check")));
     }
 
     // ------------------------------------------------------------------ //
@@ -218,15 +188,6 @@ class FixLoopOrchestratorTest {
 
     private static TriageResult triageResult(GitIssue issue) {
         return new TriageResult(issue, IssueComplexity.EASY, "Clear bug.", true);
-    }
-
-    private static FixResult fixResult(boolean success, String diff,
-                                        String failureReason, int iterations) {
-        List<FixAttempt> attempts = java.util.Collections.nCopies(
-                iterations,
-                new FixAttempt(1, "Foo.java", diff, "", success && iterations == 1));
-        return new FixResult(
-                "apache/commons-lang#42", success, attempts, diff, failureReason);
     }
 
     private static IssueRecord issueRecord(Long id) {

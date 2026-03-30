@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: GitSolve
+    orgId: 1
+    folder: GitSolve AI
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards

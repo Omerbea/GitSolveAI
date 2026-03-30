@@ -3,105 +3,1259 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title th:text="${'Report — ' + issue.issueTitle}">Fix Report</title>
+    <title th:text="${'Analysis — ' + issue.issueTitle}">Analysis Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; max-width: 1100px; }
-        h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
-        h2 { font-size: 1rem; margin-top: 2rem; margin-bottom: 0.5rem;
-             border-bottom: 1px solid #ddd; padding-bottom: 0.25rem; color: #444; text-transform: uppercase; letter-spacing: 0.04em; }
-        .meta { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; }
-        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
-        .badge-passed  { background: #d1fae5; color: #065f46; }
-        .badge-failed  { background: #fee2e2; color: #991b1b; }
-        .badge-not-run { background: #f3f4f6; color: #6b7280; }
-        a { color: #2563eb; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .body-text { background: #f9f9f9; border: 1px solid #e5e7eb; border-radius: 6px;
-                     padding: 1rem; font-size: 0.875rem; line-height: 1.6; white-space: pre-wrap; }
-        pre { background: #f8f8f8; border: 1px solid #ddd; border-radius: 6px; padding: 1rem;
-              overflow-x: auto; font-size: 0.8rem; line-height: 1.5; white-space: pre; }
-        .history-list { list-style: none; padding: 0; margin: 0; }
-        .history-list li { padding: 0.35rem 0; font-size: 0.875rem; border-bottom: 1px solid #f0f0f0; }
-        .no-report { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
-                     padding: 1rem; color: #92400e; font-size: 0.875rem; }
-        .filepath { font-family: monospace; background: #f3f4f6; padding: 0.2rem 0.5rem;
-                    border-radius: 3px; font-size: 0.875rem; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --indigo-50:  #eef2ff;
+            --indigo-100: #e0e7ff;
+            --indigo-500: #6366f1;
+            --indigo-600: #4f46e5;
+            --indigo-700: #4338ca;
+            --slate-50:   #f8fafc;
+            --slate-100:  #f1f5f9;
+            --slate-200:  #e2e8f0;
+            --slate-300:  #cbd5e1;
+            --slate-400:  #94a3b8;
+            --slate-500:  #64748b;
+            --slate-600:  #475569;
+            --slate-700:  #334155;
+            --slate-800:  #1e293b;
+            --slate-900:  #0f172a;
+            --green-100:  #dcfce7;
+            --green-600:  #16a34a;
+            --green-700:  #15803d;
+            --green-800:  #166534;
+            --red-100:    #fee2e2;
+            --red-800:    #991b1b;
+            --amber-100:  #fef3c7;
+            --amber-800:  #92400e;
+            --blue-100:   #dbeafe;
+            --blue-700:   #1d40af;
+            --purple-50:  #faf5ff;
+            --purple-100: #ede9fe;
+            --purple-600: #7c3aed;
+            --purple-700: #6d28d9;
+            --purple-800: #5b21b6;
+            --sidebar-width: 240px;
+            --topbar-h: 64px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--slate-50);
+            color: var(--slate-900);
+            display: flex;
+            min-height: 100vh;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: var(--slate-900);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            z-index: 50;
+            overflow-y: auto;
+        }
+
+        .sidebar__brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 20px;
+            height: var(--topbar-h);
+            border-bottom: 1px solid var(--slate-800);
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+
+        .sidebar__brand-icon {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .sidebar__brand-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.01em;
+        }
+
+        .sidebar__nav {
+            padding: 12px;
+            flex: 1;
+        }
+
+        .sidebar__nav-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--slate-600);
+            padding: 0 8px;
+            margin-bottom: 6px;
+            margin-top: 4px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--slate-400);
+            text-decoration: none;
+            transition: background 100ms ease, color 100ms ease;
+            position: relative;
+        }
+
+        .nav-item:hover { background: var(--slate-800); color: var(--slate-200); text-decoration: none; }
+
+        .nav-item.active {
+            background: var(--slate-800);
+            color: #fff;
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 6px; bottom: 6px;
+            width: 3px;
+            background: var(--indigo-500);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+        .nav-item.active svg { opacity: 1; }
+
+        .sidebar__footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--slate-800);
+            flex-shrink: 0;
+        }
+
+        .sidebar__footer-text {
+            font-size: 11px;
+            color: var(--slate-600);
+            line-height: 1.6;
+        }
+
+        /* Main */
+        .layout__main {
+            margin-left: var(--sidebar-width);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* Topbar */
+        .topbar {
+            height: var(--topbar-h);
+            background: #fff;
+            border-bottom: 1px solid var(--slate-200);
+            display: flex;
+            align-items: center;
+            padding: 0 32px;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            flex-shrink: 0;
+            gap: 16px;
+        }
+
+        /* Breadcrumb */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .breadcrumb__link {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--slate-500);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 150ms ease;
+        }
+
+        .breadcrumb__link:hover { color: var(--indigo-600); text-decoration: none; }
+        .breadcrumb__link svg { width: 14px; height: 14px; }
+
+        .breadcrumb__sep {
+            color: var(--slate-300);
+            font-size: 16px;
+            line-height: 1;
+        }
+
+        .breadcrumb__current {
+            color: var(--slate-700);
+            font-weight: 600;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Page content */
+        .page-content {
+            padding: 32px;
+            flex: 1;
+            max-width: 900px;
+            animation: fadeInUp 300ms ease both;
+        }
+
+        /* Issue header */
+        .issue-header {
+            margin-bottom: 24px;
+        }
+
+        .issue-header__title {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--slate-900);
+            line-height: 1.3;
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .issue-header__meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--slate-100);
+            color: var(--slate-600);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .chip--indigo {
+            background: var(--indigo-50);
+            color: var(--indigo-700);
+        }
+
+        .chip a { color: inherit; text-decoration: none; }
+        .chip a:hover { text-decoration: underline; }
+
+        .chip svg { width: 12px; height: 12px; opacity: 0.7; }
+
+        /* Meta grid card */
+        .meta-card {
+            background: #fff;
+            border: 1px solid var(--slate-200);
+            border-radius: 10px;
+            padding: 20px 24px;
+            margin-bottom: 28px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 20px;
+        }
+
+        .meta-card__item {}
+
+        .meta-card__label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--slate-400);
+            margin-bottom: 6px;
+        }
+
+        .meta-card__value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--slate-800);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        .badge-easy    { background: var(--green-100);  color: var(--green-800); }
+        .badge-medium  { background: var(--amber-100);  color: var(--amber-800); }
+        .badge-hard    { background: var(--red-100);    color: var(--red-800); }
+        .badge-unknown { background: var(--slate-100);  color: var(--slate-600); }
+
+        /* Section heading */
+        .section-heading {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--slate-500);
+            margin-bottom: 10px;
+            margin-top: 28px;
+            padding-left: 10px;
+            border-left: 3px solid var(--indigo-500);
+            line-height: 1.4;
+        }
+
+        .section-heading:first-child { margin-top: 0; }
+
+        /* Prose card */
+        .prose-card {
+            background: #fff;
+            border: 1px solid var(--slate-200);
+            border-radius: 8px;
+            padding: 16px 20px;
+            font-size: 13px;
+            line-height: 1.75;
+            color: var(--slate-700);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Files list */
+        .files-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .files-list li {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 12px;
+            background: var(--slate-100);
+            color: var(--slate-700);
+            padding: 5px 10px;
+            border-radius: 5px;
+            width: fit-content;
+        }
+
+        .files-list li svg { width: 12px; height: 12px; color: var(--slate-400); flex-shrink: 0; }
+
+        /* Patterns block */
+        .patterns-block {
+            background: var(--indigo-50);
+            border: 1px solid var(--indigo-100);
+            border-radius: 8px;
+            padding: 14px 18px;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--indigo-700);
+        }
+
+        /* No report warning */
+        .no-report {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 16px 20px;
+            color: var(--amber-800);
+            font-size: 13px;
+        }
+
+        /* Footer */
+        .report-footer {
+            font-size: 11px;
+            color: var(--slate-400);
+            margin-top: 32px;
+            padding-top: 16px;
+            border-top: 1px solid var(--slate-100);
+        }
+
+        /* Instructions section */
+        .instructions-section {
+            margin-top: 32px;
+            border-top: 1px solid var(--slate-200);
+            padding-top: 28px;
+        }
+
+        .instructions-section .section-heading {
+            border-left-color: var(--purple-600);
+            color: var(--purple-800);
+            margin-top: 0;
+        }
+
+        .instructions-desc {
+            font-size: 13px;
+            color: var(--slate-500);
+            margin-bottom: 16px;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .btn-instructions {
+            background: var(--purple-600);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 150ms ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-instructions:hover { background: var(--purple-700); }
+        .btn-instructions:disabled { background: #c4b5fd; cursor: not-allowed; opacity: 0.7; }
+        .btn-instructions:focus-visible { outline: 2px solid var(--purple-600); outline-offset: 2px; }
+
+        .instructions-box {
+            background: var(--slate-900);
+            border: 1px solid var(--slate-700);
+            border-radius: 10px;
+            padding: 20px 24px;
+            font-size: 13px;
+            line-height: 1.75;
+            white-space: pre-wrap;
+            margin-top: 16px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            color: #e2e8f0;
+            overflow-x: auto;
+        }
+
+        .instructions-error {
+            color: #dc2626;
+            font-size: 13px;
+            margin-top: 10px;
+            background: var(--red-100);
+            border-radius: 6px;
+            padding: 10px 14px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .page-content { animation: none; }
+            .spinner { animation: none; }
+        }
+
+        /* Execute section */
+        .execute-section {
+            margin-top: 32px;
+            border-top: 1px solid var(--slate-200);
+            padding-top: 28px;
+        }
+        .execute-heading { border-left-color: var(--green-600); color: var(--green-800); margin-top: 0; }
+        .execute-desc { font-size: 13px; color: var(--slate-500); margin-bottom: 16px; margin-top: 8px; line-height: 1.6; }
+        .btn-execute {
+            background: var(--green-600); color: #fff; border: none; border-radius: 8px;
+            padding: 10px 20px; font-family: inherit; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: background 150ms ease, transform 100ms ease;
+            display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn-execute:hover { background: var(--green-700); }
+        .btn-execute:active { transform: scale(0.96); }
+        .btn-execute:disabled { background: #86efac; cursor: not-allowed; transform: none; }
+        .btn-execute:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+
+        /* ── Execution Timeline ──────────────────────────────────────── */
+        .exec-timeline {
+            margin-top: 24px;
+            padding: 20px 24px;
+            background: #fff;
+            border: 1px solid var(--slate-200);
+            border-radius: 12px;
+        }
+
+        .exec-timeline__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .exec-timeline__title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--slate-500);
+        }
+
+        .exec-timeline__elapsed {
+            font-size: 11px;
+            color: var(--slate-400);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .timeline-steps { display: flex; flex-direction: column; gap: 0; }
+
+        .timeline-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            position: relative;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 300ms ease, transform 300ms ease;
+        }
+
+        .timeline-step.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* connector line between steps */
+        .timeline-step:not(:last-child) .timeline-step__track::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 28px;
+            bottom: -16px;
+            width: 1px;
+            background: var(--slate-200);
+            transform: translateX(-50%);
+        }
+
+        .timeline-step__track {
+            position: relative;
+            width: 28px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 12px;
+        }
+
+        .timeline-step__icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+            flex-shrink: 0;
+            transition: background 250ms ease, box-shadow 250ms ease;
+        }
+
+        /* Pending */
+        .timeline-step__icon--pending {
+            background: var(--slate-100);
+            border: 1.5px solid var(--slate-300);
+        }
+        .timeline-step__icon--pending::after {
+            content: '';
+            width: 6px; height: 6px;
+            background: var(--slate-300);
+            border-radius: 50%;
+        }
+
+        /* Running — pulsing ring */
+        .timeline-step__icon--running {
+            background: #fff;
+            border: 2px solid var(--green-600);
+            box-shadow: 0 0 0 0 rgba(22,163,74,0.35);
+            animation: ring-pulse 1.6s ease-out infinite;
+        }
+        .timeline-step__icon--running::after {
+            content: '';
+            width: 8px; height: 8px;
+            background: var(--green-600);
+            border-radius: 50%;
+        }
+        @keyframes ring-pulse {
+            0%   { box-shadow: 0 0 0 0   rgba(22,163,74,0.35); }
+            70%  { box-shadow: 0 0 0 7px rgba(22,163,74,0); }
+            100% { box-shadow: 0 0 0 0   rgba(22,163,74,0); }
+        }
+
+        /* Done */
+        .timeline-step__icon--done {
+            background: var(--green-600);
+            border: 2px solid var(--green-600);
+        }
+
+        /* Failed */
+        .timeline-step__icon--failed {
+            background: #dc2626;
+            border: 2px solid #dc2626;
+        }
+
+        .timeline-step__icon svg {
+            width: 13px; height: 13px;
+            color: #fff;
+            display: none;
+        }
+        .timeline-step__icon--done svg.icon-check,
+        .timeline-step__icon--failed svg.icon-x { display: block; }
+        .timeline-step__icon--running svg,
+        .timeline-step__icon--pending svg { display: none; }
+
+        .timeline-step__body {
+            flex: 1;
+            padding: 8px 0 16px;
+            min-width: 0;
+        }
+
+        .timeline-step__label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--slate-700);
+            line-height: 1.4;
+        }
+
+        .timeline-step--pending .timeline-step__label { color: var(--slate-400); }
+        .timeline-step--running .timeline-step__label { color: var(--slate-900); }
+        .timeline-step--done    .timeline-step__label { color: var(--slate-700); }
+        .timeline-step--failed  .timeline-step__label { color: #dc2626; }
+
+        .timeline-step__detail {
+            font-size: 11.5px;
+            color: var(--slate-400);
+            margin-top: 2px;
+            line-height: 1.5;
+            font-variant-numeric: tabular-nums;
+            min-height: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 300ms ease, opacity 200ms ease;
+            opacity: 0;
+        }
+
+        .timeline-step__detail.has-content {
+            max-height: 80px;
+            opacity: 1;
+        }
+
+        .timeline-step--failed .timeline-step__detail {
+            color: #dc2626;
+        }
+
+        /* PR outcome chip inside timeline */
+        .timeline-pr-chip {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: var(--green-100); color: var(--green-800);
+            border: 1px solid #bbf7d0; border-radius: 8px;
+            padding: 7px 14px; font-size: 12px; font-weight: 600;
+            text-decoration: none; margin-top: 8px;
+            transition: background 150ms ease;
+        }
+        .timeline-pr-chip:hover { background: #dcfce7; text-decoration: none; }
+
+        /* In-progress reconnect state (server-rendered) */
+        .exec-reconnect-note {
+            font-size: 12px;
+            color: var(--slate-400);
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* PR submitted section */
+        .pr-submitted-section { margin-top: 32px; border-top: 1px solid var(--slate-200); padding-top: 28px; }
+        .pr-heading { border-left-color: var(--green-600); color: var(--green-800); margin-top: 0; }
+        .pr-link-chip {
+            display: inline-flex; align-items: center; gap: 7px;
+            background: var(--green-100); color: var(--green-800); border: 1px solid #bbf7d0;
+            border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600;
+            text-decoration: none; word-break: break-all; transition: background 150ms ease;
+        }
+        .pr-link-chip:hover { background: #dcfce7; text-decoration: none; }
+
     </style>
 </head>
 <body>
 
-<p><a href="/">← Back to dashboard</a></p>
+<!-- Sidebar -->
+<nav class="sidebar" role="navigation" aria-label="Main navigation">
+    <a class="sidebar__brand" href="/">
+        <div class="sidebar__brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;width:16px;height:16px">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+        </div>
+        <span class="sidebar__brand-name">GitSolve AI</span>
+    </a>
 
-<h1 th:text="${issue.issueTitle}">Issue title</h1>
-<div class="meta">
-    <span th:text="${issue.repoFullName}">repo</span>
-    <span>·</span>
-    <a th:href="${'https://github.com/' + issue.repoFullName + '/issues/' + issue.issueNumber}"
-       th:text="${'#' + issue.issueNumber}"
-       target="_blank">issue</a>
-    <span>·</span>
-    <span th:if="${issue.status.name() == 'SUCCESS'}" class="badge badge-passed" th:text="${issue.status}">STATUS</span>
-    <span th:unless="${issue.status.name() == 'SUCCESS'}" class="badge badge-failed" th:text="${issue.status}">STATUS</span>
-    <span th:if="${issue.completedAt != null}">·
-        <span th:text="${#temporals.format(issue.completedAt, 'yyyy-MM-dd HH:mm')}">time</span>
-    </span>
-</div>
+    <div class="sidebar__nav">
+        <div class="sidebar__nav-label">Navigation</div>
 
-<!-- No report yet -->
-<div th:if="${report == null}" class="no-report">
-    No investigation report available for this issue yet.
-    The SWE Agent either hasn't run on this issue or the report couldn't be saved.
-</div>
+        <a href="/" class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            Dashboard
+        </a>
 
-<!-- Report content -->
-<div th:unless="${report == null}">
-
-    <!-- Build outcome -->
-    <h2>Build Outcome</h2>
-    <p>
-        <span th:switch="${report.buildStatus()}">
-            <span th:case="'PASSED'" class="badge badge-passed">✅ BUILD PASSED</span>
-            <span th:case="'FAILED'" class="badge badge-failed">❌ BUILD FAILED</span>
-            <span th:case="*"        class="badge badge-not-run">⬜ NOT RUN</span>
-        </span>
-        &nbsp;
-        <span th:text="${report.iterationCount() + ' iteration(s)'}">0 iterations</span>
-    </p>
-
-    <ul class="history-list" th:if="${!#lists.isEmpty(report.iterationHistory())}">
-        <li th:each="line : ${report.iterationHistory()}" th:text="${line}">iteration</li>
-    </ul>
-
-    <!-- Issue description -->
-    <h2>Issue Description</h2>
-    <div class="body-text" th:text="${report.issueBodyExcerpt()}">body</div>
-
-    <!-- Investigation -->
-    <h2>Investigation</h2>
-    <div class="body-text" th:text="${report.rootCauseAnalysis()}">analysis</div>
-
-    <!-- Proposed change -->
-    <h2>Proposed Change</h2>
-    <p th:if="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}">
-        File: <span class="filepath" th:text="${report.proposedFilePath()}">path</span>
-    </p>
-    <p th:unless="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}"
-       style="color:#999">No file path recorded.</p>
-
-    <!-- Diff -->
-    <h2>Unified Diff</h2>
-    <div th:if="${report.unifiedDiff() != null and !#strings.isEmpty(report.unifiedDiff())}">
-        <pre th:text="${report.unifiedDiff()}">diff</pre>
+        <a href="/settings" class="nav-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Settings
+        </a>
     </div>
-    <p th:unless="${report.unifiedDiff() != null and !#strings.isEmpty(report.unifiedDiff())}"
-       style="color:#999">No diff recorded — the fix was not written to the container.</p>
 
-    <p style="color:#aaa; font-size:0.75rem; margin-top:2rem;"
-       th:text="${'Report generated: ' + #temporals.format(report.generatedAt(), 'yyyy-MM-dd HH:mm:ss')}">
-        generated
-    </p>
+    <div class="sidebar__footer">
+        <div class="sidebar__footer-text">Autonomous Java issue fixer</div>
+    </div>
+</nav>
 
+<!-- Main -->
+<div class="layout__main">
+
+    <!-- Topbar with breadcrumb -->
+    <header class="topbar">
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a class="breadcrumb__link" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Dashboard
+            </a>
+            <span class="breadcrumb__sep" aria-hidden="true">/</span>
+            <span class="breadcrumb__current" th:text="${issue.issueTitle}">Issue title</span>
+        </nav>
+    </header>
+
+    <main class="page-content">
+
+        <!-- Issue header -->
+        <div class="issue-header">
+            <h1 class="issue-header__title" th:text="${issue.issueTitle}">Issue title</h1>
+            <div class="issue-header__meta">
+                <span class="chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                    </svg>
+                    <span th:text="${issue.repoFullName}">repo</span>
+                </span>
+                <span class="chip chip--indigo">
+                    <a th:href="${'https://github.com/' + issue.repoFullName + '/issues/' + issue.issueNumber}"
+                       th:text="${'#' + issue.issueNumber}"
+                       target="_blank">issue</a>
+                </span>
+                <span class="chip" th:if="${issue.completedAt != null}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span th:text="${#temporals.format(issue.completedAt, 'yyyy-MM-dd HH:mm')}">time</span>
+                </span>
+            </div>
+        </div>
+
+        <!-- No report yet -->
+        <div th:if="${report == null}" class="no-report">
+            No analysis available for this issue yet. Run the analysis pipeline to generate a report.
+        </div>
+
+        <!-- Analysis content -->
+        <div th:unless="${report == null}">
+
+            <!-- Meta grid card -->
+            <div class="meta-card">
+                <div class="meta-card__item">
+                    <div class="meta-card__label">Complexity</div>
+                    <div class="meta-card__value">
+                        <span th:with="complexity=${report.iterationHistory() != null and !#lists.isEmpty(report.iterationHistory()) ? report.iterationHistory().get(0) : 'Complexity: UNKNOWN'}"
+                              th:classappend="${#strings.contains(complexity,'EASY')} ? 'badge-easy' : (${#strings.contains(complexity,'HARD')} ? 'badge-hard' : 'badge-medium')"
+                              class="badge"
+                              th:text="${#strings.replace(complexity, 'Complexity: ', '')}">complexity</span>
+                    </div>
+                </div>
+                <div class="meta-card__item" th:if="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}">
+                    <div class="meta-card__label">Affected Files</div>
+                    <div class="meta-card__value" th:text="${#strings.length(report.proposedFilePath()) - #strings.length(#strings.replace(report.proposedFilePath(), ',', '')) + 1}">1</div>
+                </div>
+                <div class="meta-card__item" th:if="${report.iterationHistory() != null and #lists.size(report.iterationHistory()) > 1}">
+                    <div class="meta-card__label">Patterns</div>
+                    <div class="meta-card__value" th:text="${#strings.replace(report.iterationHistory().get(1), 'Patterns: ', '')}">—</div>
+                </div>
+            </div>
+
+            <!-- Issue description -->
+            <div class="section-heading">Issue Description</div>
+            <div class="prose-card" th:text="${report.issueBodyExcerpt()}">body</div>
+
+            <!-- Root cause analysis -->
+            <div class="section-heading">Root Cause Analysis</div>
+            <div class="prose-card" th:text="${report.rootCauseAnalysis()}">analysis</div>
+
+            <!-- Affected files -->
+            <div class="section-heading">Likely Affected Files</div>
+            <div th:if="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}">
+                <ul class="files-list">
+                    <li th:each="file : ${#strings.arraySplit(report.proposedFilePath(), ',')}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        <span th:text="${#strings.trim(file)}">file</span>
+                    </li>
+                </ul>
+            </div>
+            <p th:unless="${report.proposedFilePath() != null and !#strings.isEmpty(report.proposedFilePath())}"
+               style="font-size:13px;color:var(--slate-400)">No specific files identified.</p>
+
+            <!-- Suggested approach -->
+            <div class="section-heading">Suggested Approach</div>
+            <div class="prose-card" th:text="${report.proposedCode()}">approach</div>
+
+            <!-- Relevant patterns -->
+            <div th:if="${report.iterationHistory() != null and #lists.size(report.iterationHistory()) > 1}">
+                <div class="section-heading">Relevant Patterns</div>
+                <div class="patterns-block"
+                     th:text="${#strings.replace(report.iterationHistory().get(1), 'Patterns: ', '')}">patterns</div>
+            </div>
+
+            <div class="report-footer"
+                 th:text="${'Analysis generated: ' + #temporals.format(report.generatedAt(), 'yyyy-MM-dd HH:mm:ss')}">
+                generated
+            </div>
+
+            <!-- Fix Instructions section -->
+            <div class="instructions-section">
+                <div class="section-heading">Fix Instructions for AI Agent</div>
+                <p class="instructions-desc">
+                    Reads the repository README, CONTRIBUTING.md, and last 10 commits to generate
+                    a complete prompt telling an AI coding agent how to implement this fix,
+                    including commit format, code style, and contribution rules.
+                </p>
+
+                <!-- Already generated -->
+                <div th:if="${fixInstructions != null and !#strings.isEmpty(fixInstructions)}" id="instructionsResult">
+                    <div class="instructions-box" th:text="${fixInstructions}">instructions</div>
+                    <button class="btn-instructions" style="margin-top:12px" onclick="generateInstructions()">
+                        Regenerate
+                    </button>
+                </div>
+
+                <!-- Not yet generated -->
+                <div th:unless="${fixInstructions != null and !#strings.isEmpty(fixInstructions)}">
+                    <button class="btn-instructions" id="instrBtn" onclick="generateInstructions()">
+                        Generate Fix Instructions
+                    </button>
+                    <div id="instructionsResult" style="display:none"></div>
+                </div>
+
+                <div id="instructionsError" class="instructions-error" style="display:none"></div>
+            </div>
+
+            <!-- Execute section — shown when instructions exist AND no PR yet AND not already executing -->
+            <div class="execute-section"
+                 th:if="${issue.fixInstructions != null and !#strings.isEmpty(issue.fixInstructions) and issue.prUrl == null and !'EXECUTING'.equals(issue.executionStatus)}">
+                <div class="section-heading execute-heading">Submit PR via Execution Agent</div>
+                <p class="execute-desc">
+                    Applies the fix instructions inside a Docker container, runs the test suite,
+                    and opens a GitHub PR on a forked repository.
+                </p>
+                <button class="btn-execute" id="execBtn" onclick="executeAndSubmit()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Execute &amp; Submit PR
+                </button>
+                <div id="execError" class="instructions-error" style="display:none;margin-top:12px"></div>
+                <!-- Timeline — injected by JS on execute click -->
+                <div id="execTimeline" style="display:none"></div>
+            </div>
+
+            <!-- Executing in progress (server-rendered on page load while EXECUTING) -->
+            <div class="execute-section"
+                 th:if="${'EXECUTING'.equals(issue.executionStatus) and issue.prUrl == null}">
+                <div class="section-heading execute-heading">Execution In Progress</div>
+                <div class="exec-timeline" id="execTimeline">
+                    <div class="exec-timeline__header">
+                        <span class="exec-timeline__title">Pipeline</span>
+                        <span class="exec-timeline__elapsed" id="elapsedTimer">—</span>
+                    </div>
+                    <div class="timeline-steps" id="timelineSteps"><!-- steps rendered by JS --></div>
+                </div>
+                <div class="exec-reconnect-note">
+                    <span class="spinner" style="width:11px;height:11px;border-color:rgba(100,116,139,0.3);border-top-color:var(--slate-400)"></span>
+                    Connecting to live updates…
+                </div>
+            </div>
+
+            <!-- PR submitted badge — shown when prUrl is set -->
+            <div class="pr-submitted-section"
+                 th:if="${issue.prUrl != null and !#strings.isEmpty(issue.prUrl)}">
+                <div class="section-heading pr-heading">Pull Request Submitted</div>
+                <a class="pr-link-chip" th:href="${issue.prUrl}" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                    <span th:text="${issue.prUrl}">pr url</span>
+                </a>
+            </div>
+
+        </div>
+
+    </main>
 </div>
+
+<script>
+function generateInstructions() {
+    const btn = document.getElementById('instrBtn') || document.querySelector('.btn-instructions');
+    const resultEl = document.getElementById('instructionsResult');
+    const errorEl  = document.getElementById('instructionsError');
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Analysing repository\u2026';
+    }
+    if (errorEl) errorEl.style.display = 'none';
+
+    fetch(window.location.pathname.replace('/report', '/fix-instructions'), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                if (errorEl) { errorEl.textContent = data.error; errorEl.style.display = 'block'; }
+            } else {
+                if (resultEl) {
+                    resultEl.style.display = 'block';
+                    resultEl.innerHTML = '<div class="instructions-box">' +
+                        escapeHtml(data.instructions) + '</div>';
+                }
+            }
+            if (btn) { btn.disabled = false; btn.innerHTML = 'Regenerate'; }
+        })
+        .catch(err => {
+            if (errorEl) {
+                errorEl.textContent = 'Request failed: ' + err.message;
+                errorEl.style.display = 'block';
+            }
+            if (btn) { btn.disabled = false; btn.innerHTML = 'Generate Fix Instructions'; }
+        });
+}
+
+function escapeHtml(text) {
+    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+               .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+// ── Execution Timeline ───────────────────────────────────────────────────────
+
+const STEP_META = {
+    FORK:         { label: 'Fork repository',        group: 'setup' },
+    CLONE:        { label: 'Clone to local cache',   group: 'setup' },
+    DOCKER_SETUP: { label: 'Prepare Docker sandbox', group: 'setup' },
+    BRANCH:       { label: 'Create fix branch',      group: 'setup' },
+    LLM_CALL:     { label: 'Generate fix (LLM)',     group: 'iter'  },
+    APPLY_FILES:  { label: 'Apply file changes',     group: 'iter'  },
+    BUILD:        { label: 'Build & test',           group: 'iter'  },
+    PUSH:         { label: 'Push branch to fork',    group: 'finish'},
+    PR_OPEN:      { label: 'Open pull request',      group: 'finish'},
+};
+
+const STATIC_STEPS = ['FORK','CLONE','DOCKER_SETUP','BRANCH'];
+const ITER_STEPS   = ['LLM_CALL','APPLY_FILES','BUILD'];
+const FINAL_STEPS  = ['PUSH','PR_OPEN'];
+
+// step key in the DOM is "STEP" or "STEP_N" for iteration steps
+function stepKey(stepName, iteration) {
+    // Iteration steps reuse the same row — no per-iteration suffix.
+    return stepName;
+}
+
+function iterLabel(stepName, iteration, maxIter) {
+    if (ITER_STEPS.includes(stepName) && iteration > 0) {
+        return iteration + (maxIter ? '/' + maxIter : '');
+    }
+    return null;
+}
+
+let _startTs  = null;
+let _timerRaf = null;
+
+function startElapsedTimer() {
+    _startTs = Date.now();
+    function tick() {
+        const el = document.getElementById('elapsedTimer');
+        if (!el) return;
+        const s = Math.floor((Date.now() - _startTs) / 1000);
+        el.textContent = s + 's elapsed';
+        _timerRaf = requestAnimationFrame(tick);
+    }
+    _timerRaf = requestAnimationFrame(tick);
+}
+
+function stopElapsedTimer() {
+    if (_timerRaf) { cancelAnimationFrame(_timerRaf); _timerRaf = null; }
+}
+
+const SVG_CHECK = '<svg class="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+const SVG_X     = '<svg class="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+
+function buildTimelineHTML() {
+    let html = '';
+    // Only render static setup steps and final steps in the skeleton.
+    // Iteration steps (LLM_CALL, APPLY_FILES, BUILD) are inserted dynamically
+    // as SSE events arrive so they never appear as duplicate pending ghosts.
+    [...STATIC_STEPS, ...FINAL_STEPS].forEach((s, i) => {
+        const label = STEP_META[s].label;
+        html += stepRowHTML(s, 0, label, 'pending', null, i);
+    });
+    return html;
+}
+
+function stepRowHTML(stepName, iteration, label, status, detail, index) {
+    const key = stepKey(stepName, iteration);
+    const delay = Math.min(index * 55, 400);
+    return `
+<div class="timeline-step timeline-step--${status}" id="step-${key}" style="transition-delay:${delay}ms">
+  <div class="timeline-step__track">
+    <div class="timeline-step__icon timeline-step__icon--${status}">
+      ${SVG_CHECK}${SVG_X}
+    </div>
+  </div>
+  <div class="timeline-step__body">
+    <div class="timeline-step__label">${escapeHtml(label)}</div>
+    <div class="timeline-step__detail${detail ? ' has-content' : ''}" id="detail-${key}">${detail ? escapeHtml(detail) : ''}</div>
+  </div>
+</div>`;
+}
+
+function getOrCreateTimeline() {
+    let tl = document.getElementById('execTimeline');
+    if (!tl) return null;
+
+    if (!tl.querySelector('.timeline-steps')) {
+        tl.innerHTML = `
+<div class="exec-timeline__header">
+  <span class="exec-timeline__title">Pipeline</span>
+  <span class="exec-timeline__elapsed" id="elapsedTimer">0s elapsed</span>
+</div>
+<div class="timeline-steps" id="timelineSteps">${buildTimelineHTML()}</div>`;
+        tl.style.display = 'block';
+        // stagger-reveal all rows
+        requestAnimationFrame(() => {
+            tl.querySelectorAll('.timeline-step').forEach(el => el.classList.add('visible'));
+        });
+        startElapsedTimer();
+    }
+    return tl;
+}
+
+function updateStep(stepName, iteration, status, detail) {
+    const key = stepKey(stepName, iteration);
+    let stepEl = document.getElementById('step-' + key);
+
+    // For iteration steps on first RUNNING event, insert the row before PUSH
+    // (only once — subsequent events update it in-place).
+    if (!stepEl && ITER_STEPS.includes(stepName)) {
+        const label = STEP_META[stepName] ? STEP_META[stepName].label : stepName;
+        const container = document.getElementById('timelineSteps');
+        if (!container) return;
+        const totalExisting = container.querySelectorAll('.timeline-step').length;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = stepRowHTML(stepName, 0, label, 'pending', null, totalExisting);
+        const newRow = wrapper.firstElementChild;
+        const pushEl = document.getElementById('step-PUSH');
+        pushEl ? container.insertBefore(newRow, pushEl) : container.appendChild(newRow);
+        requestAnimationFrame(() => newRow.classList.add('visible'));
+        stepEl = newRow;
+    }
+
+    if (!stepEl) return;
+
+    // Update iteration badge on the label if this is an iter step
+    if (ITER_STEPS.includes(stepName) && iteration > 0) {
+        const labelEl = stepEl.querySelector('.timeline-step__label');
+        if (labelEl) {
+            const base = STEP_META[stepName]?.label || stepName;
+            labelEl.textContent = base + ' (' + iteration + ')';
+        }
+    }
+
+    // Transition status class
+    ['pending','running','done','failed'].forEach(s => stepEl.classList.remove('timeline-step--' + s));
+    stepEl.classList.add('timeline-step--' + status.toLowerCase());
+
+    // Update icon
+    const iconEl = stepEl.querySelector('.timeline-step__icon');
+    if (iconEl) {
+        ['pending','running','done','failed'].forEach(s => iconEl.classList.remove('timeline-step__icon--' + s));
+        iconEl.classList.add('timeline-step__icon--' + status.toLowerCase());
+    }
+
+    // Update detail
+    if (detail) {
+        const detailEl = document.getElementById('detail-' + key);
+        if (detailEl) {
+            detailEl.textContent = detail;
+            detailEl.classList.add('has-content');
+        }
+    }
+}
+
+function showPrLink(prUrl) {
+    const prStepEl = document.getElementById('step-PR_OPEN');
+    if (!prStepEl) return;
+    const body = prStepEl.querySelector('.timeline-step__body');
+    if (body && !body.querySelector('.timeline-pr-chip')) {
+        const chip = document.createElement('a');
+        chip.className = 'timeline-pr-chip';
+        chip.href = prUrl;
+        chip.target = '_blank';
+        chip.rel = 'noopener';
+        chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg> View Pull Request`;
+        body.appendChild(chip);
+    }
+}
+
+function listenForProgress(issueId, es) {
+    es.addEventListener('execution-step', function(e) {
+        const p = JSON.parse(e.data);
+        if (String(p.recordId) !== String(issueId)) return;
+        getOrCreateTimeline();
+        updateStep(p.step, p.iteration || 0, p.status, p.detail);
+    });
+
+    es.addEventListener('execution-complete', function(e) {
+        es.close();
+        stopElapsedTimer();
+        const p = JSON.parse(e.data);
+        if (String(p.recordId) !== String(issueId)) return;
+        updateStep('PR_OPEN', 0, 'DONE', p.prUrl);
+        showPrLink(p.prUrl);
+        // update elapsed to final
+        const el = document.getElementById('elapsedTimer');
+        if (el && _startTs) el.textContent = Math.floor((Date.now() - _startTs) / 1000) + 's — done';
+        setTimeout(() => window.location.reload(), 3000);
+    });
+
+    es.addEventListener('execution-failed', function(e) {
+        es.close();
+        stopElapsedTimer();
+        const p = JSON.parse(e.data);
+        if (String(p.recordId) !== String(issueId)) return;
+        const el = document.getElementById('elapsedTimer');
+        if (el && _startTs) el.textContent = Math.floor((Date.now() - _startTs) / 1000) + 's — failed';
+        // Show error below timeline
+        const errEl = document.getElementById('execError');
+        if (errEl) {
+            errEl.textContent = 'Execution failed: ' + (p.reason || 'unknown error');
+            errEl.style.display = 'block';
+        }
+        // Re-enable button
+        const btn = document.getElementById('execBtn');
+        if (btn) { btn.disabled = false; btn.innerHTML = 'Retry Execution'; btn.style.display = ''; }
+    });
+}
+
+function executeAndSubmit() {
+    const btn     = document.getElementById('execBtn');
+    const errorEl = document.getElementById('execError');
+    const issueId = window.location.pathname.split('/issues/')[1]?.split('/')[0];
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Starting\u2026'; }
+    if (errorEl) errorEl.style.display = 'none';
+
+    // Show timeline immediately — FORK will animate in when SSE fires
+    getOrCreateTimeline();
+
+    fetch('/issues/' + issueId + '/execute', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                if (data.prUrl) {
+                    // 409 — already submitted, reload to show PR badge
+                    window.location.reload();
+                } else {
+                    if (errorEl) { errorEl.textContent = data.error; errorEl.style.display = 'block'; }
+                    if (btn)     { btn.disabled = false; btn.innerHTML = 'Execute &amp; Submit PR'; }
+                }
+                return;
+            }
+            // Hide the execute button while running
+            if (btn) btn.style.display = 'none';
+
+            const es = new EventSource('/api/events');
+            listenForProgress(issueId, es);
+        })
+        .catch(err => {
+            if (errorEl) { errorEl.textContent = 'Request failed: ' + err.message; errorEl.style.display = 'block'; }
+            if (btn) { btn.disabled = false; btn.innerHTML = 'Execute &amp; Submit PR'; btn.style.display = ''; }
+        });
+}
+
+// If page loaded while EXECUTING, connect SSE immediately and start timer
+(function() {
+    const timelineSteps = document.getElementById('timelineSteps');
+    if (timelineSteps) {
+        // Server-rendered in-progress state — build step rows and connect
+        timelineSteps.innerHTML = buildTimelineHTML();
+        requestAnimationFrame(() => {
+            timelineSteps.querySelectorAll('.timeline-step').forEach(el => el.classList.add('visible'));
+        });
+        startElapsedTimer();
+        const issueId = window.location.pathname.split('/issues/')[1]?.split('/')[0];
+        const es = new EventSource('/api/events');
+        listenForProgress(issueId, es);
+
+        // Remove the reconnect note once SSE connects
+        es.onopen = function() {
+            const note = document.querySelector('.exec-reconnect-note');
+            if (note) note.style.display = 'none';
+        };
+    }
+})();
+</script>
 
 </body>
 </html>

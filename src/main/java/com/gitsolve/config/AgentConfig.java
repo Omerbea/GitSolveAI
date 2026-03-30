@@ -1,5 +1,9 @@
 package com.gitsolve.config;
 
+import com.gitsolve.agent.analysis.AnalysisAiService;
+import com.gitsolve.agent.execution.ExecutionAiService;
+import com.gitsolve.agent.execution.FileSelectorAiService;
+import com.gitsolve.agent.instructions.FixInstructionsAiService;
 import com.gitsolve.agent.reviewer.ReviewerAiService;
 import com.gitsolve.agent.reviewer.RuleExtractorAiService;
 import com.gitsolve.agent.scout.ScoutAiService;
@@ -37,7 +41,7 @@ public class AgentConfig {
         return AnthropicChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
                 .modelName(props.llm().model())
-                .maxTokens(8192)
+                .maxTokens(16384)  // haiku-4-5 supports 64k output; 16k is ample for complete file rewrites
                 .maxRetries(5)   // retries on 429 rate-limit with exponential backoff
                 .build();
     }
@@ -48,7 +52,7 @@ public class AgentConfig {
         return AnthropicStreamingChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
                 .modelName(props.llm().model())
-                .maxTokens(8192)
+                .maxTokens(16384)
                 .build();
     }
 
@@ -68,6 +72,40 @@ public class AgentConfig {
     // ------------------------------------------------------------------ //
     // AiService beans (conditional on a ChatLanguageModel being present)  //
     // ------------------------------------------------------------------ //
+
+    @Bean
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public FixInstructionsAiService fixInstructionsAiService(ChatLanguageModel model) {
+        return AiServices.builder(FixInstructionsAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public FileSelectorAiService fileSelectorAiService(ChatLanguageModel model) {
+        return AiServices.builder(FileSelectorAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @Scope("prototype")
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public ExecutionAiService executionAiService(ChatLanguageModel model) {
+        return AiServices.builder(ExecutionAiService.class)
+                .chatLanguageModel(model)
+                .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnBean(ChatLanguageModel.class)
+    public AnalysisAiService analysisAiService(ChatLanguageModel model) {
+        return AiServices.builder(AnalysisAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
 
     @Bean
     @ConditionalOnBean(ChatLanguageModel.class)

@@ -41,6 +41,49 @@ public class GitHubClient {
     // ------------------------------------------------------------------ //
 
     /**
+     * Searches GitHub for Java repositories within a star range, with a random page offset
+     * to avoid always returning the same repos.
+     * starRange format: "50..2000" (GitHub search syntax).
+     */
+    public Mono<List<GitHubRepoDto>> searchJavaReposByStarRange(String starRange, int page, int perPage) {
+        String query = "language:java+is:public+archived:false+stars:" + starRange;
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/search/repositories")
+                        .queryParam("q", query)
+                        .queryParam("sort", "updated")
+                        .queryParam("order", "desc")
+                        .queryParam("page", page)
+                        .queryParam("per_page", perPage)
+                        .build())
+                .retrieve()
+                .bodyToMono(GitHubSearchResponse.class)
+                .map(GitHubSearchResponse::items)
+                .onErrorResume(e -> {
+                    if (e instanceof GitHubRateLimitException) return Mono.error(e);
+                    log.error("searchJavaReposByStarRange failed: {}", e.getMessage());
+                    return Mono.just(List.of());
+                });
+    }
+
+    /**
+     * Fetches repo metadata for a specific owner/repo.
+     * Returns empty Mono if the repo does not exist.
+     */
+    public Mono<GitHubRepoDto> getRepo(String fullName) {
+        return webClient.get()
+                .uri("/repos/" + fullName)
+                .retrieve()
+                .bodyToMono(GitHubRepoDto.class)
+                .onErrorResume(WebClientResponseException.NotFound.class, e -> Mono.empty())
+                .onErrorResume(e -> {
+                    if (e instanceof GitHubRateLimitException) return Mono.error(e);
+                    log.error("getRepo({}) failed: {}", fullName, e.getMessage());
+                    return Mono.empty();
+                });
+    }
+
+    /**
      * Searches GitHub for active Java repositories.
      * GitHubRateLimitException propagates to the caller — not swallowed.
      */
@@ -141,6 +184,39 @@ public class GitHubClient {
     }
 
     /**
+     * Fetches the last N commits from the default branch of a repository.
+     * Returns a list of strings in format: "SHA (short) — Author: message"
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<List<String>> getRecentCommits(String fullName, int count) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/repos/" + fullName + "/commits")
+                        .queryParam("per_page", Math.min(count, 30))
+                        .build())
+                .retrieve()
+                .bodyToFlux(Map.class)
+                .take(count)
+                .map(commit -> {
+                    String sha = ((String) commit.getOrDefault("sha", "")).substring(0, 7);
+                    Map<String, Object> commitObj = (Map<String, Object>) commit.get("commit");
+                    if (commitObj == null) return sha + " — (no data)";
+                    String message = (String) commitObj.getOrDefault("message", "");
+                    // Only first line of commit message
+                    message = message.contains("\n") ? message.substring(0, message.indexOf('\n')) : message;
+                    Map<String, Object> author = (Map<String, Object>) commitObj.get("author");
+                    String authorName = author != null ? (String) author.getOrDefault("name", "?") : "?";
+                    return sha + " — " + authorName + ": " + message;
+                })
+                .collectList()
+                .onErrorResume(e -> {
+                    if (e instanceof GitHubRateLimitException) return Mono.error(e);
+                    log.error("getRecentCommits({}) failed: {}", fullName, e.getMessage());
+                    return Mono.just(List.of());
+                });
+    }
+
+    /**
      * Counts commits in the last 90 days.
      * Capped at 100 (GitHub's per_page max) — use 100 as "≥100 commits".
      */
@@ -160,6 +236,71 @@ public class GitHubClient {
                     if (e instanceof GitHubRateLimitException) return Mono.error(e);
                     log.error("getRecentCommitCount({}) failed: {}", fullName, e.getMessage());
                     return Mono.just(0);
+                });
+    }
+
+    // ------------------------------------------------------------------ //
+    // Write operations                                                     //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Forks the given upstream repository to the authenticated user's account.
+     *
+     * <p>GitHub returns 202 Accepted (fork may not yet be ready) with the fork metadata.
+     * The returned full_name ("forkOwner/repo") is safe to use immediately for branch
+     * creation and push — GitHub's API handles the async completion transparently for
+     * reads that follow shortly after.
+     *
+     * @param upstreamFullName "owner/repo" of the repository to fork
+     * @return Mono of the forked repo's full_name (e.g. "gitsolvebot/commons-lang")
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<String> forkRepo(String upstreamFullName) {
+        return webClient.post()
+                .uri("/repos/" + upstreamFullName + "/forks")
+                .bodyValue(Map.of())
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(body -> (String) body.get("full_name"))
+                .doOnNext(fork -> log.info("forkRepo({}) → {}", upstreamFullName, fork))
+                .onErrorResume(e -> {
+                    if (e instanceof GitHubRateLimitException) return Mono.error(e);
+                    log.error("forkRepo({}) failed: {}", upstreamFullName, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
+
+    /**
+     * Opens a pull request from a branch on a fork against the upstream default branch.
+     *
+     * @param upstreamFullName "owner/repo" of the repository to open the PR against
+     * @param forkFullName     "forkOwner/repo" — the fork that contains the branch
+     * @param branch           branch name on the fork (e.g. "gitsolve/issue-123")
+     * @param title            PR title
+     * @param body             PR body (markdown); should include "Closes #N"
+     * @return Mono of the PR html_url (e.g. "https://github.com/apache/commons-lang/pull/99")
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<String> createGitHubPr(String upstreamFullName, String forkFullName,
+                                       String branch, String title, String body) {
+        String forkOwner = forkFullName.split("/")[0];
+        Map<String, Object> payload = Map.of(
+                "title", title,
+                "body",  body,
+                "head",  forkOwner + ":" + branch,
+                "base",  "main"
+        );
+        return webClient.post()
+                .uri("/repos/" + upstreamFullName + "/pulls")
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(resp -> (String) resp.get("html_url"))
+                .doOnNext(url -> log.info("createGitHubPr({}) → {}", upstreamFullName, url))
+                .onErrorResume(e -> {
+                    if (e instanceof GitHubRateLimitException) return Mono.error(e);
+                    log.error("createGitHubPr({}) failed: {}", upstreamFullName, e.getMessage());
+                    return Mono.error(e);
                 });
     }
 }

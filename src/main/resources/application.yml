@@ -4,6 +4,13 @@ spring:
   threads:
     virtual:
       enabled: true
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+  thymeleaf:
+    cache: false
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/gitsolve}
     username: ${DATABASE_USER:gitsolve}
@@ -19,8 +26,20 @@ spring:
 gitsolve:
   github:
     app-token: ${GITHUB_APP_TOKEN:}
-    max-repos-per-run: 5
+    max-repos-per-run: 2
     max-issues-per-repo: 5
+    # target-repos: pin specific repos to scan (bypasses LLM scout entirely)
+    # example:
+    #   target-repos:
+    #     - apache/commons-lang
+    #     - javaparser/javaparser
+    target-repos:
+      - apache/commons-lang
+      - javaparser/javaparser
+      - diffplug/spotless
+    # star-range: used when target-repos is empty — searches repos in this star range
+    # format: "MIN..MAX" e.g. "100..3000" — avoids always picking the same mega-repos
+    star-range: "100..3000"
   llm:
     provider: anthropic
     model: claude-haiku-4-5-20251001
@@ -30,9 +49,12 @@ gitsolve:
     image: eclipse-temurin:21-jdk
     mem-limit-mb: 1024
     cpu-quota: 50000
-    build-timeout-seconds: 300
+    build-timeout-seconds: 600
   schedule:
     cron: "0 0 0 * * *"
+  repo-cache:
+    base-dir: ${user.home}/.gitsolve-repos
+    update-existing: true
 
 management:
   endpoints:

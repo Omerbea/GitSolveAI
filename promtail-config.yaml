@@ -1,0 +1,29 @@
+# promtail-config.yaml
+# Tails the app log file written by run-app.sh and ships to Loki.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: gitsolve-ai
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: gitsolve-ai
+          app: gitsolve-ai
+          __path__: /logs/app.log
+    pipeline_stages:
+      # Parse Spring Boot log level so we can filter by level in Grafana
+      - regex:
+          expression: '(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:\d{2})\s+(?P<level>ERROR|WARN|INFO|DEBUG)\s+(?P<pid>\d+)\s+---\s+\[(?P<app>[^\]]+)\]\s+\[(?P<thread>[^\]]+)\].*?\]\s+(?P<logger>\S+)\s+:\s+(?P<message>.*)'
+      - labels:
+          level:
+          logger:

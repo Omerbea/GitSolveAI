@@ -1,6 +1,7 @@
 package com.gitsolve.persistence.entity;
 
 import com.gitsolve.model.ConstraintJson;
+import com.gitsolve.model.FixReport;
 import com.gitsolve.model.IssueComplexity;
 import com.gitsolve.model.IssueStatus;
 import jakarta.persistence.*;
@@ -64,7 +65,19 @@ public class IssueRecord {
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "fix_report", columnDefinition = "jsonb")
-    private com.gitsolve.model.FixReport fixReport;
+    private FixReport fixReport;
+
+    @Column(name = "fix_instructions", columnDefinition = "TEXT")
+    private String fixInstructions;
+
+    @Column(name = "pr_url")
+    private String prUrl;
+
+    @Column(name = "execution_status")
+    private String executionStatus;
+
+    @Column(name = "report_viewed_at")
+    private Instant reportViewedAt;
 
     @Column(name = "iteration_count")
     private Integer iterationCount = 0;
@@ -123,8 +136,31 @@ public class IssueRecord {
     public ConstraintJson getConstraintJson() { return constraintJson; }
     public void setConstraintJson(ConstraintJson constraintJson) { this.constraintJson = constraintJson; }
 
-    public com.gitsolve.model.FixReport getFixReport() { return fixReport; }
-    public void setFixReport(com.gitsolve.model.FixReport fixReport) { this.fixReport = fixReport; }
+    public FixReport getFixReport() { return fixReport; }
+    public void setFixReport(FixReport fixReport) { this.fixReport = fixReport; }
+
+    public String getFixInstructions() { return fixInstructions; }
+    public void setFixInstructions(String fixInstructions) { this.fixInstructions = fixInstructions; }
+
+    public String getPrUrl() { return prUrl; }
+    public void setPrUrl(String prUrl) { this.prUrl = prUrl; }
+
+    public String getExecutionStatus() { return executionStatus; }
+    public void setExecutionStatus(String executionStatus) { this.executionStatus = executionStatus; }
+
+    public Instant getReportViewedAt() { return reportViewedAt; }
+    public void setReportViewedAt(Instant reportViewedAt) { this.reportViewedAt = reportViewedAt; }
+
+    /** Derived state for the dashboard status icon. */
+    public String getStatusIcon() {
+        if (prUrl != null && !prUrl.isBlank())          return "submitted";
+        if ("EXECUTING".equals(executionStatus))        return "executing";
+        if ("EXECUTION_FAILED".equals(executionStatus)) return "exec-failed";
+        if (fixInstructions != null && !fixInstructions.isBlank()) return "ready";
+        if (reportViewedAt != null)                     return "read";
+        if (fixReport != null)                          return "analysed";
+        return "new";
+    }
 
     public Integer getIterationCount() { return iterationCount; }
     public void setIterationCount(Integer iterationCount) { this.iterationCount = iterationCount; }

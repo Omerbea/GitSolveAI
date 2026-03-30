@@ -1,11 +1,13 @@
 package com.gitsolve.agent.scout;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.gitsolve.config.GitSolveProperties;
 import com.gitsolve.github.GitHubClient;
 import com.gitsolve.github.dto.GitHubIssueDto;
+import com.gitsolve.model.AppSettings;
+import com.gitsolve.model.AppSettings.ScoutMode;
 import com.gitsolve.model.GitIssue;
 import com.gitsolve.model.GitRepository;
+import com.gitsolve.persistence.SettingsStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -24,8 +26,9 @@ import static org.mockito.Mockito.*;
 class ScoutServiceTest {
 
     private ScoutAiService scoutAiService;
-    private GitHubClient gitHubClient;
-    private ScoutService service;
+    private GitHubClient   gitHubClient;
+    private SettingsStore  settingsStore;
+    private ScoutService   service;
 
     private static final String SAMPLE_JSON = """
             [
@@ -46,9 +49,12 @@ class ScoutServiceTest {
     void setUp() {
         scoutAiService = mock(ScoutAiService.class);
         gitHubClient   = mock(GitHubClient.class);
-        GitSolveProperties props = mock(GitSolveProperties.class);
+        settingsStore  = mock(SettingsStore.class);
+        // Default: LLM mode — tests exercise the LLM path unless overridden
+        AppSettings defaults = new AppSettings(ScoutMode.LLM, List.of(), 100, 3000, 5, 5);
+        when(settingsStore.load()).thenReturn(defaults);
 
-        service = new ScoutService(scoutAiService, gitHubClient, new ObjectMapper(), props);
+        service = new ScoutService(scoutAiService, gitHubClient, new ObjectMapper(), settingsStore);
     }
 
     // ------------------------------------------------------------------ //

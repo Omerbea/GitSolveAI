@@ -1,5 +1,7 @@
 package com.gitsolve.telemetry;
 
+import com.gitsolve.persistence.IssueStore;
+import com.gitsolve.persistence.SettingsStore;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -36,8 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class AgentMetricsTest {
 
-    @MockBean
-    com.gitsolve.persistence.IssueStore issueStore;
+    @MockBean IssueStore    issueStore;
+    @MockBean SettingsStore settingsStore;
 
     @Autowired
     AgentMetrics agentMetrics;
