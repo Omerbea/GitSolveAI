@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Builds a bounded source context string from a targeted list of file paths.
  *
- * <p>Unlike {@link com.gitsolve.agent.swe.ContextWindowManager}, this builder:
+ * <p>Unlike the legacy context builder, this builder:
  * <ul>
  *   <li>Only reads files explicitly selected by {@link FileSelectorAiService}.</li>
  *   <li>Caps each file at {@link #MAX_FILE_CHARS} characters (hard truncation with a marker).</li>

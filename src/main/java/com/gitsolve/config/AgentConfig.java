@@ -8,13 +8,10 @@ import com.gitsolve.agent.reviewer.ReviewerAiService;
 import com.gitsolve.agent.reviewer.RuleExtractorAiService;
 import com.gitsolve.agent.scout.ScoutAiService;
 import com.gitsolve.agent.scout.ScoutTools;
-import com.gitsolve.agent.swe.SweAiService;
 import com.gitsolve.agent.triage.TriageAiService;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.service.AiServices;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -71,16 +68,6 @@ public class AgentConfig {
                 .maxTokens(16384)
                 .maxRetries(5)
                 .temperature(0.3)
-                .build();
-    }
-
-    @Bean
-    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
-    public StreamingChatLanguageModel anthropicStreamingChatModel(GitSolveProperties props) {
-        return AnthropicStreamingChatModel.builder()
-                .apiKey(apiKey("ANTHROPIC_API_KEY"))
-                .modelName(props.llm().powerModel())
-                .maxTokens(16384)
                 .build();
     }
 
@@ -178,16 +165,6 @@ public class AgentConfig {
             @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(ReviewerAiService.class)
                 .chatLanguageModel(model)
-                .build();
-    }
-
-    @Bean
-    @Scope("prototype")
-    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
-    public SweAiService sweAiService(StreamingChatLanguageModel model) {
-        return AiServices.builder(SweAiService.class)
-                .streamingChatLanguageModel(model)
-                .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
                 .build();
     }
 

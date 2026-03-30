@@ -12,7 +12,7 @@ import dev.langchain4j.service.V;
  * The LLM receives a git diff, the repository's governance constraints, and the
  * issue title; it returns a strict JSON object describing approval/rejection.
  * Returns a raw String so ReviewerService can parse it with ObjectMapper,
- * matching the same pattern as SweFixParser.
+ * matching the same JSON-parse-from-string pattern.
  */
 public interface ReviewerAiService {
 

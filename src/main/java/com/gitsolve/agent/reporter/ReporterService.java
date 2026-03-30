@@ -113,7 +113,7 @@ public class ReporterService {
                 bodyExcerpt,
                 rootCause,
                 proposedFilePath,
-                "",   // proposedCode: not stored in FixAttempt — would need SweFixResponse change
+                "",   // proposedCode: not stored in FixAttempt (no fix content carried through the pipeline yet)
                 unifiedDiff,
                 buildStatus,
                 attempts.size(),
