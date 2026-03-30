@@ -116,7 +116,8 @@ class FixLoopOrchestratorTest {
                 List.of("src/main/java/StringUtils.java"),
                 "Add a null guard before the isEmpty call.",
                 "EASY",
-                "Null-check pattern already used in adjacent methods."
+                "Null-check pattern already used in adjacent methods.",
+                null    // phaseStats: null in tests
         ));
     }
 

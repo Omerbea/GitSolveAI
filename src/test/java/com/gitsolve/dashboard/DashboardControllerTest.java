@@ -143,7 +143,8 @@ class DashboardControllerTest {
                 "FAILED",
                 3,
                 List.of("Iteration 1: ❌ BUILD FAILED", "Iteration 2: ❌ BUILD FAILED", "Iteration 3: ❌ BUILD FAILED"),
-                Instant.now()
+                Instant.now(),
+                null    // telemetry: not yet available in this test
         ));
         when(issueStore.findById(3L)).thenReturn(Optional.of(record));
 
@@ -274,6 +275,6 @@ class DashboardControllerTest {
     private static FixReport minimalFixReport(String title) {
         return new FixReport(title, "https://github.com/owner/repo/issues/1",
                 "body", "root cause", "Foo.java", "", "", "ANALYSED", 0,
-                List.of("Complexity: EASY"), Instant.now());
+                List.of("Complexity: EASY"), Instant.now(), null);
     }
 }

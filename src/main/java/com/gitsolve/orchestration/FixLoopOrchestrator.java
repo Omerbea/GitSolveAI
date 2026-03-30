@@ -151,10 +151,15 @@ public class FixLoopOrchestrator {
                 try {
                     // --- Analysis Agent ---
                     AnalysisResult analysis = analysisService.analyse(issue, triageResult);
-                    tokenCount += 2_000; // rough estimate per call
+                    PhaseStats analysisStats = analysis.phaseStats();
+                    int analysisTotalTokens = analysisStats != null
+                            ? analysisStats.inputTokens() + analysisStats.outputTokens() : 2_000;
+                    tokenCount += analysisTotalTokens;
 
                     issueStore.recordTokenUsage(runLog.getRunId(), "analysis",
-                            props.llm().model(), 2_000, 500);
+                            props.llm().liteModel(),
+                            analysisStats != null ? analysisStats.inputTokens() : 2_000,
+                            analysisStats != null ? analysisStats.outputTokens() : 500);
 
                     // Persist as FixReport so the existing dashboard/DB works unchanged
                     String affectedFilesStr = analysis.affectedFiles() != null
@@ -174,7 +179,8 @@ public class FixLoopOrchestrator {
                             "ANALYSED",
                             0,
                             buildIterationHistory(analysis),
-                            Instant.now()
+                            Instant.now(),
+                            null    // telemetry: null until execution completes
                     );
 
                     issueStore.saveFixReport(recordId, report);
@@ -192,6 +198,12 @@ public class FixLoopOrchestrator {
                     ExecutionResult executionResult = executionService.execute(issue, fixInstructions, analysis.affectedFiles());
 
                     if (executionResult.success()) {
+                        TelemetryReport telemetry = new TelemetryReport(
+                                analysisStats,
+                                null,   // fileSelector stats are internal to ExecutionService
+                                executionResult.phaseStats(),
+                                executionResult.reviewerPhaseStats()
+                        );
                         FixReport updatedReport = new FixReport(
                                 report.issueTitle(),
                                 report.issueUrl(),
@@ -203,7 +215,8 @@ public class FixLoopOrchestrator {
                                 "PASSED",
                                 executionResult.iterations(),
                                 report.iterationHistory(),
-                                Instant.now());
+                                Instant.now(),
+                                telemetry);
 
                         issueStore.saveFixReport(recordId, updatedReport);
                         issueStore.markPrSubmitted(recordId, executionResult.prUrl());

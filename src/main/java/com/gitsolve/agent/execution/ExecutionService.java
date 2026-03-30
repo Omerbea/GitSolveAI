@@ -184,6 +184,12 @@ public class ExecutionService {
             String lastDiff   = "";
             String analysisHintsStr = affectedFiles != null ? String.join("\n", affectedFiles) : "";
 
+            // Telemetry accumulators across all iterations
+            int  totalInputTokens  = 0;
+            int  totalOutputTokens = 0;
+            long loopStartMs       = System.currentTimeMillis();
+            PhaseStats lastReviewerStats = null;
+
             for (int i = 1; i <= maxIter; i++) {
                 log.info("[Execution] {} iteration {}/{}", issueId, i, maxIter);
                 String iterLabel = "Iteration " + i + "/" + maxIter;
@@ -222,23 +228,35 @@ public class ExecutionService {
                 reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.RUNNING, iterLabel, i);
                 String raw;
                 try {
+                    long llmStart = System.currentTimeMillis();
+                    Response<String> llmResponse;
                     if (i == 1) {
-                        Response<String> llmResponse = aiService.execute(
+                        llmResponse = aiService.execute(
                                 issue.repoFullName(),
                                 issue.issueNumber(),
                                 issue.title(),
                                 fixInstructions,
                                 sourceContext,
                                 buildError);
-                        raw = llmResponse.content();
                     } else {
-                        Response<String> llmResponse = aiService.executeFollowUp(
+                        llmResponse = aiService.executeFollowUp(
                                 issue.repoFullName(),
                                 issue.issueNumber(),
                                 issue.title(),
                                 buildError);
-                        raw = llmResponse.content();
                     }
+                    long llmDurationMs = System.currentTimeMillis() - llmStart;
+                    raw = llmResponse.content();
+
+                    // Accumulate token counts across iterations
+                    dev.langchain4j.model.output.TokenUsage tu = llmResponse.tokenUsage();
+                    int inTok  = tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0;
+                    int outTok = tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0;
+                    totalInputTokens  += inTok;
+                    totalOutputTokens += outTok;
+                    log.debug("[Execution] {} iter {}: tokens={}/{} durationMs={}",
+                            issueId, i, inTok, outTok, llmDurationMs);
+
                     reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.DONE, iterLabel, i);
                 } catch (Exception e) {
                     reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.FAILED, e.getMessage(), i);
@@ -297,6 +315,7 @@ public class ExecutionService {
                     FixResult fixResult = new FixResult(
                             issueId, true, List.of(), lastDiff, null);
                     ReviewResult reviewResult = reviewerService.review(fixResult, issue);
+                    lastReviewerStats = reviewResult.phaseStats(); // capture even on rejection
                     if (!reviewResult.approved()) {
                         log.info("[Execution] {} iter {}: reviewer rejected ({} violations) — feeding back to next iteration",
                                 issueId, i, reviewResult.violations().size());
@@ -360,7 +379,19 @@ public class ExecutionService {
 
                     reporter.step(recordId, ExecutionStep.PR_OPEN, StepStatus.DONE, prUrl);
                     log.info("[Execution] {} PR submitted: {}", issueId, prUrl);
-                    return ExecutionResult.success(prUrl, lastDiff, i);
+
+                    // Build accumulated execution PhaseStats
+                    long totalDurationMs = System.currentTimeMillis() - loopStartMs;
+                    PhaseStats executionStats = new PhaseStats(
+                            totalInputTokens,
+                            totalOutputTokens,
+                            props.llm().powerModel(),
+                            totalDurationMs,
+                            "iterations: " + i
+                    );
+                    log.info("[Execution] {} telemetry: totalTokens={}/{} iterations={} durationMs={}",
+                            issueId, totalInputTokens, totalOutputTokens, i, totalDurationMs);
+                    return ExecutionResult.success(prUrl, lastDiff, i, executionStats, lastReviewerStats);
                 }
 
                 reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
@@ -374,8 +405,18 @@ public class ExecutionService {
             log.warn("[Execution] {} exhausted {} iterations without passing build", issueId, maxIter);
             reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
                     "Exhausted " + maxIter + " iterations");
+            // Build accumulated stats even on exhaustion
+            long totalDurationMs = System.currentTimeMillis() - loopStartMs;
+            PhaseStats executionStats = new PhaseStats(
+                    totalInputTokens,
+                    totalOutputTokens,
+                    props.llm().powerModel(),
+                    totalDurationMs,
+                    "iterations: " + maxIter + " (exhausted)"
+            );
             return ExecutionResult.failure(
-                    "Exhausted " + maxIter + " iterations without a passing build", lastDiff, maxIter);
+                    "Exhausted " + maxIter + " iterations without a passing build",
+                    lastDiff, maxIter, executionStats, lastReviewerStats);
 
         } catch (BuildEnvironmentException e) {
             reporter.step(recordId, ExecutionStep.DOCKER_SETUP, StepStatus.FAILED, e.getMessage());

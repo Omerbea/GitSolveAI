@@ -80,22 +80,25 @@ public class AnalysisService {
             long durationMs = System.currentTimeMillis() - start;
             raw = response.content();
 
-            // Capture token usage for observability (T02 will thread into domain model)
+            String json = extractJson(raw);
+            AnalysisResult parsed = objectMapper.readValue(json, AnalysisResult.class);
+
+            // Capture token usage and inject into the result so the orchestrator can propagate it
             TokenUsage tu = response.tokenUsage();
-            @SuppressWarnings("unused")
             PhaseStats phaseStats = new PhaseStats(
                     tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0,
                     tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0,
                     "analysis",
                     durationMs,
-                    "complexity=" + "UNKNOWN"   // filled in after parse below
+                    "complexity=" + (parsed.estimatedComplexity() != null
+                            ? parsed.estimatedComplexity() : "UNKNOWN")
             );
 
-            String json = extractJson(raw);
-            AnalysisResult result = objectMapper.readValue(json, AnalysisResult.class);
-            log.info("[Analysis] {} — complexity={} affectedFiles={}",
+            AnalysisResult result = parsed.withPhaseStats(phaseStats);
+            log.info("[Analysis] {} — complexity={} affectedFiles={} tokens={}/{}",
                     issueId, result.estimatedComplexity(),
-                    result.affectedFiles() != null ? result.affectedFiles().size() : 0);
+                    result.affectedFiles() != null ? result.affectedFiles().size() : 0,
+                    phaseStats.inputTokens(), phaseStats.outputTokens());
             return result;
 
         } catch (Exception e) {

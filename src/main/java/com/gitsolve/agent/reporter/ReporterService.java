@@ -118,7 +118,8 @@ public class ReporterService {
                 buildStatus,
                 attempts.size(),
                 history,
-                Instant.now()
+                Instant.now(),
+                null    // telemetry: not available via ReporterService (old SWE path)
         );
     }
 
@@ -139,7 +140,8 @@ public class ReporterService {
                 "NOT_RUN",
                 0,
                 List.of(),
-                Instant.now()
+                Instant.now(),
+                null    // telemetry: not available
         );
     }
 }

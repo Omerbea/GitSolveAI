@@ -78,9 +78,8 @@ public class ReviewerService {
             long durationMs = System.currentTimeMillis() - start;
             String rawResponse = aiResponse.content();
 
-            // Capture token usage for observability (T02 will thread into domain model)
+            // Capture token usage and include in the returned ReviewResult
             TokenUsage tu = aiResponse.tokenUsage();
-            @SuppressWarnings("unused")
             PhaseStats phaseStats = new PhaseStats(
                     tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0,
                     tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0,
@@ -94,17 +93,20 @@ public class ReviewerService {
 
             // 5. Log outcome
             if (response.approved()) {
-                log.info("[{}] Reviewer: approved=true, violations=0", issueId);
+                log.info("[{}] Reviewer: approved=true, violations=0 tokens={}/{}",
+                        issueId, phaseStats.inputTokens(), phaseStats.outputTokens());
             } else {
-                log.info("[{}] Reviewer: approved=false, violations={}", issueId,
-                        response.violations().size());
+                log.info("[{}] Reviewer: approved=false, violations={} tokens={}/{}",
+                        issueId, response.violations().size(),
+                        phaseStats.inputTokens(), phaseStats.outputTokens());
                 log.warn("[{}] Reviewer violations: {}", issueId, response.violations());
             }
 
             return new ReviewResult(
                     response.approved(),
                     response.violations() != null ? response.violations() : List.of(),
-                    response.summary() != null ? response.summary() : "");
+                    response.summary() != null ? response.summary() : "",
+                    phaseStats);
 
         } catch (Exception e) {
             log.error("[{}] Reviewer error: {}", issueId, e.getMessage(), e);

@@ -9,6 +9,10 @@ import java.util.List;
  *
  * Stored as JSONB in issue_records.fix_report and displayed on the dashboard.
  * Pure domain record — no framework dependencies.
+ *
+ * The {@code telemetry} field carries per-phase token counts and timing for the
+ * four agent phases (Analysis, FileSelector, Execution, Reviewer). Null on
+ * analysis-only reports generated before the execution phase runs.
  */
 public record FixReport(
         String issueTitle,
@@ -21,5 +25,6 @@ public record FixReport(
         String buildStatus,         // "PASSED", "FAILED", or "NOT_RUN"
         int    iterationCount,
         List<String> iterationHistory,  // one summary line per iteration
-        Instant generatedAt
+        Instant generatedAt,
+        TelemetryReport telemetry   // per-phase token/timing stats; null until execution completes
 ) {}
