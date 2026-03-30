@@ -1,5 +1,6 @@
 package com.gitsolve.agent.execution;
 
+import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.config.GitSolveProperties;
 import com.gitsolve.docker.BuildEnvironment;
 import com.gitsolve.docker.BuildEnvironmentException;
@@ -7,7 +8,9 @@ import com.gitsolve.docker.BuildOutput;
 import com.gitsolve.docker.DockerBuildEnvironment;
 import com.gitsolve.github.GitHubClient;
 import com.gitsolve.model.ExecutionResult;
+import com.gitsolve.model.FixResult;
 import com.gitsolve.model.GitIssue;
+import com.gitsolve.model.ReviewResult;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
 import org.slf4j.Logger;
@@ -66,6 +69,7 @@ public class ExecutionService {
     private final FileSelectorAiService fileSelectorAiService;
     private final FileSelectorParser    fileSelectorParser;
     private final TargetedContextBuilder contextBuilder;
+    private final ReviewerService       reviewerService;
 
     /** Set before execute() via setProgressReporter(). */
     private ExecutionProgressReporter reporter  = NoopProgressReporter.INSTANCE;
@@ -80,7 +84,8 @@ public class ExecutionService {
             GitSolveProperties props,
             RepoCache repoCache,
             FileSelectorAiService fileSelectorAiService,
-            FileSelectorParser fileSelectorParser) {
+            FileSelectorParser fileSelectorParser,
+            ReviewerService reviewerService) {
         this.aiService             = aiService;
         this.context               = context;
         this.parser                = parser;
@@ -90,6 +95,7 @@ public class ExecutionService {
         this.fileSelectorAiService = fileSelectorAiService;
         this.fileSelectorParser    = fileSelectorParser;
         this.contextBuilder        = new TargetedContextBuilder();
+        this.reviewerService       = reviewerService;
     }
 
     /**
@@ -280,6 +286,17 @@ public class ExecutionService {
 
                 if (buildOut.buildPassed()) {
                     reporter.step(recordId, ExecutionStep.BUILD, StepStatus.DONE, iterLabel, i);
+                    // Reviewer check — runs on every passing build before committing
+                    FixResult fixResult = new FixResult(
+                            issueId, true, List.of(), lastDiff, null);
+                    ReviewResult reviewResult = reviewerService.review(fixResult, issue);
+                    if (!reviewResult.approved()) {
+                        log.info("[Execution] {} iter {}: reviewer rejected ({} violations) — feeding back to next iteration",
+                                issueId, i, reviewResult.violations().size());
+                        buildError = "REVIEWER REJECTED:\n" + String.join("\n", reviewResult.violations())
+                                + (buildError.isBlank() ? "" : "\n\nPrevious build error:\n" + buildError);
+                        continue;
+                    }
                     // Commit — write message to a temp file to avoid shell injection
                     env.runBuild("git -C /workspace config user.email 'gitsolve-bot@gitsolve.ai'");
                     env.runBuild("git -C /workspace config user.name 'GitSolve Bot'");

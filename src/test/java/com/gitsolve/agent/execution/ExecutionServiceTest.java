@@ -10,6 +10,8 @@ import com.gitsolve.docker.DockerBuildEnvironment;
 import com.gitsolve.github.GitHubClient;
 import com.gitsolve.model.ExecutionResult;
 import com.gitsolve.model.GitIssue;
+import com.gitsolve.model.ReviewResult;
+import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +48,7 @@ class ExecutionServiceTest {
     @Mock DockerBuildEnvironment   env;
     @Mock FileSelectorAiService    fileSelectorAiService;
     @Mock FileSelectorParser       fileSelectorParser;
+    @Mock ReviewerService          reviewerService;
 
     @TempDir Path tempDir;
 
@@ -80,7 +83,7 @@ class ExecutionServiceTest {
         );
 
         service = new ExecutionService(aiService, ctx, parserMock, gitHubClient, props, repoCache,
-                fileSelectorAiService, fileSelectorParser);
+                fileSelectorAiService, fileSelectorParser, reviewerService);
 
         // Common stubs
         when(ctx.getBean(DockerBuildEnvironment.class)).thenReturn(env);
@@ -97,6 +100,7 @@ class ExecutionServiceTest {
         when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn("{\"paths\":[\"src/main/java/Foo.java\"]}");
         when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.readFile(anyString())).thenReturn(java.util.Optional.of("// stub content"));
+        lenient().when(reviewerService.review(any(), any())).thenReturn(new ReviewResult(true, List.of(), "LGTM"));
     }
 
     // ------------------------------------------------------------------ //
@@ -279,7 +283,7 @@ class ExecutionServiceTest {
         );
         ExecutionService localService = new ExecutionService(
                 aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
-                fileSelectorAiService, fileSelectorParser);
+                fileSelectorAiService, fileSelectorParser, reviewerService);
 
         // Iteration 1 — build fails
         BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
@@ -322,5 +326,71 @@ class ExecutionServiceTest {
         // executeFollowUp() must be called exactly once (iteration 2 only)
         verify(aiService, times(1)).executeFollowUp(
                 anyString(), anyInt(), anyString(), anyString());
+    }
+
+    // ------------------------------------------------------------------ //
+    // Reviewer rejects first passing build — violation fed to next iter   //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_reviewerRejectsFirstPass_violationsFedToNextIteration()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Local props with maxIterationsPerFix=2
+        GitSolveProperties localProps = new GitSolveProperties(
+                new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
+                new GitSolveProperties.Llm("anthropic", "claude-test", 500_000, 2),
+                new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
+                new GitSolveProperties.Schedule("0 0 0 * * *"),
+                new GitSolveProperties.RepoCache(tempDir.toString(), false)
+        );
+        ExecutionService localService = new ExecutionService(
+                aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
+                fileSelectorAiService, fileSelectorParser, reviewerService);
+
+        BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
+        BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
+
+        // iter1: checkout, mvnwCheck, pomCheck, buildPass
+        // iter2: mvnwCheck, pomCheck, buildPass, gitConfig×2, gitCommit, rmMsg, setRemote, gitPush
+        when(env.runBuild(anyString()))
+                .thenReturn(gitPass)    // git checkout -b
+                // iteration 1
+                .thenReturn(gitPass)    // mvnw check
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildPass)  // mvn clean package (PASSES — but reviewer rejects)
+                // iteration 2
+                .thenReturn(gitPass)    // mvnw check
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildPass)  // mvn clean package (PASSES — reviewer approves)
+                .thenReturn(buildPass)  // git config user.email
+                .thenReturn(buildPass)  // git config user.name
+                .thenReturn(buildPass)  // git commit
+                .thenReturn(buildPass)  // rm commit msg
+                .thenReturn(buildPass)  // git remote set-url
+                .thenReturn(buildPass); // git push
+
+        // Reviewer: reject on first call, approve on second
+        when(reviewerService.review(any(), any()))
+                .thenReturn(new ReviewResult(false, List.of("No test coverage"), "rejected"))
+                .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
+
+        when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
+                .thenReturn(VALID_JSON);
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
+        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X", List.of());
+
+        // Execution must succeed on the second iteration
+        assertThat(result.success()).isTrue();
+
+        // Reviewer must have been called twice (once per passing build)
+        verify(reviewerService, times(2)).review(any(), any());
+
+        // The second iteration must receive the reviewer violation text as buildError
+        verify(aiService, times(1)).executeFollowUp(
+                anyString(), anyInt(), anyString(),
+                argThat(be -> be.contains("REVIEWER REJECTED")));
     }
 }

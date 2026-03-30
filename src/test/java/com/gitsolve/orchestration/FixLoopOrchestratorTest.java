@@ -88,15 +88,13 @@ class FixLoopOrchestratorTest {
 
         SseEmitterRegistry mockSse = mock(SseEmitterRegistry.class);
 
-        // Default stubs for the execution+review path
+        // Default stubs for the execution path
         mockExecution = mock(ExecutionService.class);
         when(mockCtx.getBean(ExecutionService.class)).thenReturn(mockExecution);
         when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.success("https://github.com/fork/repo/pull/1", "diff", 1));
         when(mockFixInstructions.generate(anyString(), anyInt(), anyString(), any()))
                 .thenReturn("Fix instructions text");
-        when(mockReviewer.review(any(), any()))
-                .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
 
         orchestrator = new FixLoopOrchestrator(
                 mockScout, mockTriage, mockAnalysis,
@@ -235,8 +233,6 @@ class FixLoopOrchestratorTest {
         when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.success(
                         "https://github.com/apache/commons-lang/pull/1", "diff...", 2));
-        when(mockReviewer.review(any(), any()))
-                .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
 
         orchestrator.runFixLoop();
 

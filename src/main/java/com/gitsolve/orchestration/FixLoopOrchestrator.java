@@ -192,15 +192,6 @@ public class FixLoopOrchestrator {
                     ExecutionResult executionResult = executionService.execute(issue, fixInstructions, analysis.affectedFiles());
 
                     if (executionResult.success()) {
-                        // --- Reviewer Agent ---
-                        FixResult fixResult = new FixResult(
-                                issue.repoFullName() + "#" + issue.issueNumber(),
-                                true,
-                                List.of(),
-                                executionResult.diff(),
-                                null);
-                        ReviewResult reviewResult = reviewerService.review(fixResult, issue);
-
                         FixReport updatedReport = new FixReport(
                                 report.issueTitle(),
                                 report.issueUrl(),
@@ -218,8 +209,8 @@ public class FixLoopOrchestrator {
                         issueStore.markPrSubmitted(recordId, executionResult.prUrl());
                         metrics.recordIssueSucceeded();
 
-                        log.info("[FixLoop] {} → PR_SUBMITTED prUrl={} reviewApproved={}",
-                                issueId, executionResult.prUrl(), reviewResult.approved());
+                        log.info("[FixLoop] {} → PR_SUBMITTED prUrl={}",
+                                issueId, executionResult.prUrl());
 
                         // Push to all connected dashboard clients
                         sseRegistry.broadcast("issue-analysed", buildIssueEvent(
