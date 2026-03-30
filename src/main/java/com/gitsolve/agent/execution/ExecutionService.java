@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -196,12 +195,10 @@ public class ExecutionService {
                     selectedPaths = List.of();
                 }
 
-                // Fallback: if selection is empty or failed, use first 5 files alphabetically
+                // Fallback: if selection is empty or failed, rank files by keyword overlap with issue
                 if (selectedPaths.isEmpty()) {
-                    log.info("[Execution] {} iter {}: using fallback file selection", issueId, i);
-                    List<String> sorted = new ArrayList<>(javaFiles);
-                    Collections.sort(sorted);
-                    selectedPaths = sorted.subList(0, Math.min(FileSelectorParser.MAX_PATHS, sorted.size()));
+                    log.info("[Execution] {} iter {}: using keyword fallback file selection", issueId, i);
+                    selectedPaths = keywordFallback(javaFiles, issue);
                 }
 
                 // ── Step 2: Build targeted context from selected files ────
@@ -366,6 +363,51 @@ public class ExecutionService {
     // ------------------------------------------------------------------ //
     // Helpers                                                              //
     // ------------------------------------------------------------------ //
+
+    /**
+     * Scores each path by the number of keyword tokens (from the issue title+body) that
+     * appear as substrings in the lower-cased path, then returns the top
+     * {@link FileSelectorParser#MAX_PATHS} paths by descending score.
+     *
+     * <p>Tokens shorter than 3 characters are ignored to avoid noise from
+     * stop-words like "in", "at", "to", etc.
+     *
+     * @param paths list of candidate paths (may be empty or null)
+     * @param issue the issue providing title+body keywords
+     * @return ranked sublist of up to MAX_PATHS paths
+     */
+    static List<String> keywordFallback(List<String> paths, GitIssue issue) {
+        if (paths == null || paths.isEmpty()) return List.of();
+
+        // Tokenize issue title + body: split on non-word chars, lowercase, min length 3
+        String text  = (issue.title() != null ? issue.title() : "")
+                + " " + (issue.body() != null ? issue.body() : "");
+        String[] tokens = text.toLowerCase().split("\\W+");
+
+        List<String> filtered = new ArrayList<>();
+        for (String t : tokens) {
+            if (t.length() >= 3) filtered.add(t);
+        }
+
+        // Score each path
+        List<String> ranked = new ArrayList<>(paths);
+        ranked.sort((a, b) -> {
+            int scoreA = score(a.toLowerCase(), filtered);
+            int scoreB = score(b.toLowerCase(), filtered);
+            return Integer.compare(scoreB, scoreA); // descending
+        });
+
+        return ranked.subList(0, Math.min(FileSelectorParser.MAX_PATHS, ranked.size()));
+    }
+
+    /** Counts how many tokens from {@code tokens} appear as substrings of {@code lowerPath}. */
+    private static int score(String lowerPath, List<String> tokens) {
+        int count = 0;
+        for (String token : tokens) {
+            if (lowerPath.contains(token)) count++;
+        }
+        return count;
+    }
 
     /**
      * Finds the deepest common parent directory of all changed files.

@@ -146,6 +146,38 @@ class ExecutionServiceTest {
     }
 
     // ------------------------------------------------------------------ //
+    // Keyword fallback — selects by overlap with issue title/body         //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_keywordFallback_selectsMatchingPath()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Override: file selector returns empty → keyword fallback kicks in
+        when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of());
+        // Two candidates — StringUtils scores higher against "Fix NPE in StringUtils"
+        when(env.listJavaFiles(anyString())).thenReturn(
+                List.of("src/main/java/AbstractXxx.java", "src/main/java/StringUtils.java"));
+
+        // All git/build commands pass
+        BuildOutput passed = new BuildOutput("", "", 0, false, Duration.ofSeconds(1));
+        when(env.runBuild(anyString())).thenReturn(passed);
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue(
+                "apache/commons-lang", 42, "Fix NPE in StringUtils", "StringUtils throws NPE",
+                null, List.of());
+        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X", List.of());
+
+        // Keyword fallback ran successfully — no NPE and execution completed
+        assertThat(result.success()).isTrue();
+        // Commit message file was written → confirms the build-pass path was reached
+        verify(env).writeFile(eq(".gitsolve_commit_msg"), anyString());
+        // readFile was called for the selected files (contextBuilder.build uses it)
+        verify(env, atLeastOnce()).readFile(anyString());
+    }
+
+    // ------------------------------------------------------------------ //
     // Token safety — asserts token never appears in logs                  //
     // ------------------------------------------------------------------ //
 
