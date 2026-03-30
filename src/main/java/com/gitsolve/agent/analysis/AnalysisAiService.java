@@ -42,6 +42,9 @@ public interface AnalysisAiService {
 
             Triage assessment: {{triageReasoning}}
 
+            Source code context (top candidate files from the repository):
+            {{sourceContext}}
+
             Analyse this issue as a senior engineer. Reply with the JSON object only.
             """)
     String analyse(
@@ -49,6 +52,7 @@ public interface AnalysisAiService {
             @V("issueNumber")      int issueNumber,
             @V("issueTitle")       String issueTitle,
             @V("issueBody")        String issueBody,
-            @V("triageReasoning")  String triageReasoning
+            @V("triageReasoning")  String triageReasoning,
+            @V("sourceContext")    String sourceContext
     );
 }
