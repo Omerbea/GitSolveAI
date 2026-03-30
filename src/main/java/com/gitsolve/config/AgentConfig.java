@@ -17,7 +17,7 @@ import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.StreamingChatLanguageModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.service.AiServices;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,7 +26,13 @@ import org.springframework.context.annotation.Scope;
 /**
  * Wires LangChain4j ChatLanguageModel and AiService beans.
  * Uses @ConditionalOnProperty so only the configured provider's model beans are created.
- * AiService beans are conditional on a ChatLanguageModel being present.
+ *
+ * Two Anthropic chat models are registered with different temperatures:
+ *   - strictChatModel (temp 0.1): used for JSON-output agents that need deterministic structured responses
+ *   - generativeChatModel (temp 0.3): used for code-generation agents that benefit from slight variation
+ *
+ * All AiService factory methods use @Qualifier to explicitly select the correct model bean,
+ * avoiding Spring ambiguity when two ChatLanguageModel beans are registered simultaneously.
  */
 @Configuration
 public class AgentConfig {
@@ -35,14 +41,36 @@ public class AgentConfig {
     // Anthropic                                                            //
     // ------------------------------------------------------------------ //
 
-    @Bean
+    /**
+     * Low-temperature model for agents that emit structured JSON.
+     * Strict agents: TriageAiService, FileSelectorAiService, AnalysisAiService,
+     *                ReviewerAiService, RuleExtractorAiService, ScoutAiService.
+     */
+    @Bean("strictChatModel")
     @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
-    public ChatLanguageModel anthropicChatModel(GitSolveProperties props) {
+    public ChatLanguageModel strictChatModel(GitSolveProperties props) {
         return AnthropicChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
                 .modelName(props.llm().model())
-                .maxTokens(16384)  // haiku-4-5 supports 64k output; 16k is ample for complete file rewrites
-                .maxRetries(5)   // retries on 429 rate-limit with exponential backoff
+                .maxTokens(16384)
+                .maxRetries(5)
+                .temperature(0.1)
+                .build();
+    }
+
+    /**
+     * Higher-temperature model for agents that generate code or prose.
+     * Generative agents: ExecutionAiService, FixInstructionsAiService.
+     */
+    @Bean("generativeChatModel")
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public ChatLanguageModel generativeChatModel(GitSolveProperties props) {
+        return AnthropicChatModel.builder()
+                .apiKey(apiKey("ANTHROPIC_API_KEY"))
+                .modelName(props.llm().model())
+                .maxTokens(16384)
+                .maxRetries(5)
+                .temperature(0.3)
                 .build();
     }
 
@@ -70,46 +98,56 @@ public class AgentConfig {
     }
 
     // ------------------------------------------------------------------ //
-    // AiService beans (conditional on a ChatLanguageModel being present)  //
+    // AiService beans (Anthropic; conditional on provider=anthropic)      //
     // ------------------------------------------------------------------ //
 
+    // --- Generative agents (code / prose output; temp 0.3) --- //
+
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public FixInstructionsAiService fixInstructionsAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public FixInstructionsAiService fixInstructionsAiService(
+            @Qualifier("generativeChatModel") ChatLanguageModel model) {
         return AiServices.builder(FixInstructionsAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
 
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public FileSelectorAiService fileSelectorAiService(ChatLanguageModel model) {
-        return AiServices.builder(FileSelectorAiService.class)
-                .chatLanguageModel(model)
-                .build();
-    }
-
-    @Bean
     @Scope("prototype")
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public ExecutionAiService executionAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public ExecutionAiService executionAiService(
+            @Qualifier("generativeChatModel") ChatLanguageModel model) {
         return AiServices.builder(ExecutionAiService.class)
                 .chatLanguageModel(model)
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
                 .build();
     }
 
+    // --- Strict agents (JSON output; temp 0.1) --- //
+
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public AnalysisAiService analysisAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public FileSelectorAiService fileSelectorAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
+        return AiServices.builder(FileSelectorAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public AnalysisAiService analysisAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(AnalysisAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
 
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public ScoutAiService scoutAiService(ChatLanguageModel model, ScoutTools tools) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public ScoutAiService scoutAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model,
+            ScoutTools tools) {
         return AiServices.builder(ScoutAiService.class)
                 .chatLanguageModel(model)
                 .tools(tools)
@@ -117,24 +155,27 @@ public class AgentConfig {
     }
 
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public TriageAiService triageAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public TriageAiService triageAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(TriageAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
 
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public RuleExtractorAiService ruleExtractorAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public RuleExtractorAiService ruleExtractorAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(RuleExtractorAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
 
     @Bean
-    @ConditionalOnBean(ChatLanguageModel.class)
-    public ReviewerAiService reviewerAiService(ChatLanguageModel model) {
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public ReviewerAiService reviewerAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(ReviewerAiService.class)
                 .chatLanguageModel(model)
                 .build();
@@ -142,7 +183,7 @@ public class AgentConfig {
 
     @Bean
     @Scope("prototype")
-    @ConditionalOnBean(StreamingChatLanguageModel.class)
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
     public SweAiService sweAiService(StreamingChatLanguageModel model) {
         return AiServices.builder(SweAiService.class)
                 .streamingChatLanguageModel(model)
