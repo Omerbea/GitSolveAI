@@ -42,6 +42,8 @@ class FixLoopOrchestratorTest {
     private ApplicationContext    mockCtx;
     private FixInstructionsService mockFixInstructions;
     private ReviewerService       mockReviewer;
+    /** Field-level execution mock — override per-test for failure scenarios. */
+    private ExecutionService      mockExecution;
 
     private FixLoopOrchestrator orchestrator;
 
@@ -87,9 +89,9 @@ class FixLoopOrchestratorTest {
         SseEmitterRegistry mockSse = mock(SseEmitterRegistry.class);
 
         // Default stubs for the execution+review path
-        ExecutionService mockExecutionService = mock(ExecutionService.class);
-        when(mockCtx.getBean(ExecutionService.class)).thenReturn(mockExecutionService);
-        when(mockExecutionService.execute(any(), anyString()))
+        mockExecution = mock(ExecutionService.class);
+        when(mockCtx.getBean(ExecutionService.class)).thenReturn(mockExecution);
+        when(mockExecution.execute(any(), anyString()))
                 .thenReturn(ExecutionResult.success("https://github.com/fork/repo/pull/1", "diff", 1));
         when(mockFixInstructions.generate(anyString(), anyInt(), anyString(), any()))
                 .thenReturn("Fix instructions text");
@@ -211,15 +213,53 @@ class FixLoopOrchestratorTest {
     void runFixLoop_executionFails_markExecutionFailedCalled() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockCtx.getBean(ExecutionService.class)).thenReturn(mock(ExecutionService.class));
-        ExecutionService failingExecution = mockCtx.getBean(ExecutionService.class);
-        when(failingExecution.execute(any(), anyString()))
+        when(mockExecution.execute(any(), anyString()))
                 .thenReturn(ExecutionResult.failure("Build failed after 3 attempts", "", 3));
 
         orchestrator.runFixLoop();
 
         verify(mockIssueStore).markExecutionFailed(eq(1L), contains("Build failed"));
         verify(mockMetrics).recordIssueFailed("execution_failed");
+        verify(mockIssueStore, never()).markPrSubmitted(anyLong(), anyString());
+    }
+
+    // ------------------------------------------------------------------ //
+    // TC-07: Execution wiring — exact PR URL propagated to markPrSubmitted //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    @Tag("unit")
+    void runFixLoop_executionWired_exactPrUrlMarkPrSubmitted() {
+        when(mockTriage.triageBatch(any()))
+                .thenReturn(List.of(triageResult(ISSUE)));
+        when(mockExecution.execute(any(), anyString()))
+                .thenReturn(ExecutionResult.success(
+                        "https://github.com/apache/commons-lang/pull/1", "diff...", 2));
+        when(mockReviewer.review(any(), any()))
+                .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
+
+        orchestrator.runFixLoop();
+
+        verify(mockIssueStore).markPrSubmitted(
+                eq(1L), eq("https://github.com/apache/commons-lang/pull/1"));
+        verify(mockIssueStore, never()).markExecutionFailed(anyLong(), anyString());
+    }
+
+    // ------------------------------------------------------------------ //
+    // TC-08: Execution failure message propagated to markExecutionFailed  //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    @Tag("unit")
+    void runFixLoop_executionFailure_failureMessageInMarkExecutionFailed() {
+        when(mockTriage.triageBatch(any()))
+                .thenReturn(List.of(triageResult(ISSUE)));
+        when(mockExecution.execute(any(), anyString()))
+                .thenReturn(ExecutionResult.failure("Build failed after 3 attempts", "", 3));
+
+        orchestrator.runFixLoop();
+
+        verify(mockIssueStore).markExecutionFailed(eq(1L), contains("Build failed"));
         verify(mockIssueStore, never()).markPrSubmitted(anyLong(), anyString());
     }
 

@@ -187,4 +187,44 @@ class ExecutionServiceTest {
     //                                                                    //
     // buildPrBody — also tested in ExecutionServiceRedactTokenTest       //
     // ------------------------------------------------------------------ //
+
+    // ------------------------------------------------------------------ //
+    // Shell injection — commit message written via -F flag, not -m       //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_commitMessageWithInjectionChars_usesFileFlag()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Arrange: fix response with a commit message containing shell metacharacters
+        String injectionMsg = "fix(core): close issue $(id) `whoami`";
+        ExecutionFixResponse injectionResponse = new ExecutionFixResponse(
+                List.of(new FileChange("src/main/java/Foo.java", "public class Foo {}")),
+                injectionMsg,
+                "Fix the issue",
+                "Closes #42"
+        );
+        when(parserMock.parse(anyString())).thenReturn(injectionResponse);
+
+        BuildOutput passed = new BuildOutput("", "", 0, false, Duration.ofSeconds(1));
+        when(env.runBuild(anyString())).thenReturn(passed);
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
+
+        // Act
+        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X");
+
+        // Assert: writeFile called with the injection-containing message
+        verify(env).writeFile(eq(".gitsolve_commit_msg"), contains("$(id)"));
+
+        // Assert: no git commit -m invocation (must use -F flag instead)
+        verify(env, never()).runBuild(argThat(cmd -> cmd.contains("commit -m ")));
+
+        // Assert: git commit -F was invoked with the temp file path
+        verify(env).runBuild(argThat(cmd ->
+                cmd.contains("commit -F /workspace/.gitsolve_commit_msg")));
+
+        assertThat(result.success()).isTrue();
+    }
 }
