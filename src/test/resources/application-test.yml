@@ -24,6 +24,8 @@ gitsolve:
   llm:
     provider: anthropic
     model: claude-3-5-sonnet-20241022
+    lite-model: claude-haiku-test
+    power-model: claude-sonnet-test
     max-tokens-per-run: 500000
     max-iterations-per-fix: 5
   docker:

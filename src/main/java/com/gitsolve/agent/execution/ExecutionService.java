@@ -10,9 +10,12 @@ import com.gitsolve.github.GitHubClient;
 import com.gitsolve.model.ExecutionResult;
 import com.gitsolve.model.FixResult;
 import com.gitsolve.model.GitIssue;
+import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.ReviewResult;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +26,7 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
@@ -193,7 +197,8 @@ public class ExecutionService {
                 // Ask the LLM which files it needs — input is paths only, no content.
                 List<String> selectedPaths;
                 try {
-                    String selectorRaw = fileSelectorAiService.selectFiles(fixInstructions, fileListStr, buildError, analysisHintsStr);
+                    Response<String> selectorResponse = fileSelectorAiService.selectFiles(fixInstructions, fileListStr, buildError, analysisHintsStr);
+                    String selectorRaw = selectorResponse.content();
                     selectedPaths = fileSelectorParser.parse(selectorRaw, javaFiles);
                 } catch (Exception e) {
                     log.warn("[Execution] {} iter {}: file selection failed ({}), using fallback",
@@ -218,19 +223,21 @@ public class ExecutionService {
                 String raw;
                 try {
                     if (i == 1) {
-                        raw = aiService.execute(
+                        Response<String> llmResponse = aiService.execute(
                                 issue.repoFullName(),
                                 issue.issueNumber(),
                                 issue.title(),
                                 fixInstructions,
                                 sourceContext,
                                 buildError);
+                        raw = llmResponse.content();
                     } else {
-                        raw = aiService.executeFollowUp(
+                        Response<String> llmResponse = aiService.executeFollowUp(
                                 issue.repoFullName(),
                                 issue.issueNumber(),
                                 issue.title(),
                                 buildError);
+                        raw = llmResponse.content();
                     }
                     reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.DONE, iterLabel, i);
                 } catch (Exception e) {

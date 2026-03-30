@@ -2,8 +2,11 @@ package com.gitsolve.agent.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitsolve.model.GitIssue;
+import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.TriageResult;
 import com.gitsolve.repocache.RepoCache;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -64,13 +67,28 @@ public class AnalysisService {
                 log.warn("[Analysis] {} sourceContext=empty (repo cache miss or error): {}", issueId, e.getMessage());
             }
 
-            String raw = aiService.analyse(
+            String raw;
+            long start = System.currentTimeMillis();
+            Response<String> response = aiService.analyse(
                     issue.repoFullName(),
                     issue.issueNumber(),
                     issue.title(),
                     bodyExcerpt,
                     triage.reasoning() != null ? triage.reasoning() : "",
                     sourceContext
+            );
+            long durationMs = System.currentTimeMillis() - start;
+            raw = response.content();
+
+            // Capture token usage for observability (T02 will thread into domain model)
+            TokenUsage tu = response.tokenUsage();
+            @SuppressWarnings("unused")
+            PhaseStats phaseStats = new PhaseStats(
+                    tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0,
+                    tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0,
+                    "analysis",
+                    durationMs,
+                    "complexity=" + "UNKNOWN"   // filled in after parse below
             );
 
             String json = extractJson(raw);

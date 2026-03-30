@@ -39,7 +39,9 @@ public record GitSolveProperties(
 
     public record Llm(
             @NotBlank String provider,          // "anthropic" | "gemini"
-            @NotBlank String model,
+            @NotBlank String model,             // kept for backward compat / Gemini path
+            @NotBlank String liteModel,         // fast/cheap model for strict JSON agents (triage, analysis, review)
+            @NotBlank String powerModel,        // high-capability model for code generation agents
             int maxTokensPerRun,                // daily cap: 500000
             int maxIterationsPerFix             // default: 5
     ) {}

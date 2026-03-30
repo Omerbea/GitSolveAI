@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "709f9322",
+    "label": "gitsolveai",
+    "command": "cd /Users/omer/Projects/GitSolveAI && set -a && source .env && set +a && DATABASE_URL=jdbc:postgresql://localhost:5433/gitsolve mvn spring-boot:run 2>&1 | tee logs/app.log",
+    "cwd": "/Users/omer/Projects/GitSolveAI",
+    "ownerSessionFile": "/Users/omer/.gsd/sessions/--Users-omer-Projects-GitSolveAI--/2026-03-30T08-42-02-251Z_783f4999-a27b-4deb-a7ea-1457b32d1eec.jsonl",
+    "persistAcrossSessions": false,
+    "startedAt": 1774864369071,
+    "processType": "server",
+    "group": null,
+    "readyPattern": null,
+    "readyPort": 8080,
+    "pid": 26434
+  }
+]

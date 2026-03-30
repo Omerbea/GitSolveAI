@@ -1,5 +1,6 @@
 package com.gitsolve.agent.reviewer;
 
+import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
@@ -50,7 +51,7 @@ public interface ReviewerAiService {
 
             Return the JSON review object now.
             """)
-    String reviewFix(
+    Response<String> reviewFix(
             @V("issueTitle")      String issueTitle,
             @V("constraintsJson") String constraintsJson,
             @V("diff")            String diff

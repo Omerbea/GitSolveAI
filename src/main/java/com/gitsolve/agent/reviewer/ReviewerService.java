@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gitsolve.model.ConstraintJson;
 import com.gitsolve.model.FixResult;
 import com.gitsolve.model.GitIssue;
+import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.ReviewResult;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -67,10 +70,24 @@ public class ReviewerService {
             String constraintsJson = objectMapper.writeValueAsString(constraints);
 
             // 3. Call reviewer LLM
-            String rawResponse = reviewerAiService.reviewFix(
+            long start = System.currentTimeMillis();
+            Response<String> aiResponse = reviewerAiService.reviewFix(
                     issue.title(),
                     constraintsJson,
                     fixResult.finalDiff() != null ? fixResult.finalDiff() : "");
+            long durationMs = System.currentTimeMillis() - start;
+            String rawResponse = aiResponse.content();
+
+            // Capture token usage for observability (T02 will thread into domain model)
+            TokenUsage tu = aiResponse.tokenUsage();
+            @SuppressWarnings("unused")
+            PhaseStats phaseStats = new PhaseStats(
+                    tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0,
+                    tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0,
+                    "reviewer",
+                    durationMs,
+                    ""
+            );
 
             // 4. Parse the response
             ReviewResponse response = parseResponse(rawResponse);

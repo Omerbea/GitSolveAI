@@ -2,6 +2,9 @@ package com.gitsolve.agent.instructions;
 
 import com.gitsolve.github.GitHubClient;
 import com.gitsolve.model.FixReport;
+import com.gitsolve.model.PhaseStats;
+import dev.langchain4j.model.output.Response;
+import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -80,10 +83,24 @@ public class FixInstructionsService {
                     issueId, readme.length(), contributing.length(),
                     commits != null ? commits.size() : 0);
 
-            String result = aiService.generateInstructions(
+            long start = System.currentTimeMillis();
+            Response<String> response = aiService.generateInstructions(
                     repoFullName, issueNumber, issueTitle,
                     rootCause, affectedFiles, approach, patterns,
                     readme, contributing, recentCommits
+            );
+            long durationMs = System.currentTimeMillis() - start;
+            String result = response.content();
+
+            // Capture token usage for observability (T02 will thread into domain model)
+            TokenUsage tu = response.tokenUsage();
+            @SuppressWarnings("unused")
+            PhaseStats phaseStats = new PhaseStats(
+                    tu != null && tu.inputTokenCount()  != null ? tu.inputTokenCount()  : 0,
+                    tu != null && tu.outputTokenCount() != null ? tu.outputTokenCount() : 0,
+                    "fix-instructions",
+                    durationMs,
+                    ""
             );
 
             log.info("[FixInstructions] Generated {}chars for {}", result.length(), issueId);

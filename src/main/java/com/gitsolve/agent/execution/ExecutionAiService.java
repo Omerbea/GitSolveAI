@@ -1,5 +1,6 @@
 package com.gitsolve.agent.execution;
 
+import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
@@ -69,7 +70,7 @@ public interface ExecutionAiService {
 
             Implement the fix now. Return only the JSON object.
             """)
-    String execute(
+    Response<String> execute(
             @V("repoFullName")     String repoFullName,
             @V("issueNumber")      int    issueNumber,
             @V("issueTitle")       String issueTitle,
@@ -94,7 +95,7 @@ public interface ExecutionAiService {
 
             The previous fix attempt failed. Apply corrections and return the updated JSON object.
             """)
-    String executeFollowUp(
+    Response<String> executeFollowUp(
             @V("repoFullName")  String repoFullName,
             @V("issueNumber")   int    issueNumber,
             @V("issueTitle")    String issueTitle,

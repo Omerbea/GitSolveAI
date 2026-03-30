@@ -1,5 +1,6 @@
 package com.gitsolve.agent.execution;
 
+import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
@@ -47,7 +48,7 @@ public interface FileSelectorAiService {
 
             Return the JSON object with the paths you need.
             """)
-    String selectFiles(
+    Response<String> selectFiles(
             @V("fixInstructions") String fixInstructions,
             @V("filePaths")       String filePaths,
             @V("buildError")      String buildError,

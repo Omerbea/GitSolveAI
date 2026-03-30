@@ -6,6 +6,7 @@ import com.gitsolve.model.IssueComplexity;
 import com.gitsolve.model.TriageResult;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
+import dev.langchain4j.model.output.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,7 +64,7 @@ class AnalysisServiceTest {
 
         when(repoCache.ensureFork(anyString())).thenReturn(tempDir);
         when(aiService.analyse(any(), anyInt(), any(), any(), any(), any()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
 
         GitIssue issue = new GitIssue("owner/repo", 1, "Fix null analysis in Foo", "Foo crashes", null, List.of());
         TriageResult triage = new TriageResult(issue, IssueComplexity.EASY, "looks easy", true);
@@ -96,7 +97,7 @@ class AnalysisServiceTest {
         when(repoCache.ensureFork(anyString()))
                 .thenThrow(new RepoCacheException("git clone failed"));
         when(aiService.analyse(any(), anyInt(), any(), any(), any(), any()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
 
         GitIssue issue = new GitIssue("owner/repo", 2, "Bug in Bar", "Bar is broken", null, List.of());
         TriageResult triage = new TriageResult(issue, IssueComplexity.EASY, "trivial", true);

@@ -4,6 +4,7 @@ import com.gitsolve.model.ConstraintJson;
 import com.gitsolve.model.FixResult;
 import com.gitsolve.model.GitIssue;
 import com.gitsolve.model.ReviewResult;
+import dev.langchain4j.model.output.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -66,7 +67,7 @@ class ReviewerServiceTest {
                 """.formatted(violationMsg);
 
         when(mockReviewerAiService.reviewFix(anyString(), anyString(), anyString()))
-                .thenReturn(responseJson);
+                .thenReturn(Response.from(responseJson, null, null));
 
         ReviewResult result = service.review(buildFixResult("+System.out.println(\"debug\");"), TEST_ISSUE);
 
@@ -91,7 +92,7 @@ class ReviewerServiceTest {
                 """;
 
         when(mockReviewerAiService.reviewFix(anyString(), anyString(), anyString()))
-                .thenReturn(responseJson);
+                .thenReturn(Response.from(responseJson, null, null));
 
         ReviewResult result = service.review(buildFixResult("+Objects.requireNonNull(value);"), TEST_ISSUE);
 
@@ -133,7 +134,7 @@ class ReviewerServiceTest {
                 ```""";
 
         when(mockReviewerAiService.reviewFix(anyString(), anyString(), anyString()))
-                .thenReturn(responseJson);
+                .thenReturn(Response.from(responseJson, null, null));
 
         ReviewResult result = service.review(buildFixResult("+// clean change"), TEST_ISSUE);
 

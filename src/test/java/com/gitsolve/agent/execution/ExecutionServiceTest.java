@@ -14,6 +14,7 @@ import com.gitsolve.model.ReviewResult;
 import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
+import dev.langchain4j.model.output.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -76,7 +77,7 @@ class ExecutionServiceTest {
     void setUp() throws Exception {
         props = new GitSolveProperties(
                 new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
-                new GitSolveProperties.Llm("anthropic", "claude-test", 500_000, 3),
+                new GitSolveProperties.Llm("anthropic", "claude-test", "claude-haiku-test", "claude-sonnet-test", 500_000, 3),
                 new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
                 new GitSolveProperties.Schedule("0 0 0 * * *"),
                 new GitSolveProperties.RepoCache(tempDir.toString(), false)
@@ -90,14 +91,14 @@ class ExecutionServiceTest {
         when(gitHubClient.forkRepo(anyString())).thenReturn(Mono.just("bot/commons-lang"));
         when(repoCache.ensureFork(anyString())).thenReturn(tempDir);
         when(aiService.execute(anyString(), anyInt(), anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
         lenient().when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
         when(parserMock.parse(anyString())).thenReturn(VALID_RESPONSE);
         when(env.listJavaFiles(anyString())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.getDiff()).thenReturn("--- a/Foo.java\n+++ b/Foo.java\n@@ -1 +1 @@");
         // File selector stubs — return empty so fallback path is exercised
-        when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn("{\"paths\":[\"src/main/java/Foo.java\"]}");
+        when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn(Response.from("{\"paths\":[\"src/main/java/Foo.java\"]}", null, null));
         when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.readFile(anyString())).thenReturn(java.util.Optional.of("// stub content"));
         lenient().when(reviewerService.review(any(), any())).thenReturn(new ReviewResult(true, List.of(), "LGTM"));
@@ -276,7 +277,7 @@ class ExecutionServiceTest {
         // Local props with maxIterationsPerFix=2 to keep the test self-contained
         GitSolveProperties localProps = new GitSolveProperties(
                 new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
-                new GitSolveProperties.Llm("anthropic", "claude-test", 500_000, 2),
+                new GitSolveProperties.Llm("anthropic", "claude-test", "claude-haiku-test", "claude-sonnet-test", 500_000, 2),
                 new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
                 new GitSolveProperties.Schedule("0 0 0 * * *"),
                 new GitSolveProperties.RepoCache(tempDir.toString(), false)
@@ -309,7 +310,7 @@ class ExecutionServiceTest {
                 .thenReturn(buildPass); // git push
 
         when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
         when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 
@@ -338,7 +339,7 @@ class ExecutionServiceTest {
         // Local props with maxIterationsPerFix=2
         GitSolveProperties localProps = new GitSolveProperties(
                 new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
-                new GitSolveProperties.Llm("anthropic", "claude-test", 500_000, 2),
+                new GitSolveProperties.Llm("anthropic", "claude-test", "claude-haiku-test", "claude-sonnet-test", 500_000, 2),
                 new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
                 new GitSolveProperties.Schedule("0 0 0 * * *"),
                 new GitSolveProperties.RepoCache(tempDir.toString(), false)
@@ -375,7 +376,7 @@ class ExecutionServiceTest {
                 .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
 
         when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(VALID_JSON);
+                .thenReturn(Response.from(VALID_JSON, null, null));
         when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 

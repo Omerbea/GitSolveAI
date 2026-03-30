@@ -51,7 +51,7 @@ public class AgentConfig {
     public ChatLanguageModel strictChatModel(GitSolveProperties props) {
         return AnthropicChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
-                .modelName(props.llm().model())
+                .modelName(props.llm().liteModel())
                 .maxTokens(16384)
                 .maxRetries(5)
                 .temperature(0.1)
@@ -67,7 +67,7 @@ public class AgentConfig {
     public ChatLanguageModel generativeChatModel(GitSolveProperties props) {
         return AnthropicChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
-                .modelName(props.llm().model())
+                .modelName(props.llm().powerModel())
                 .maxTokens(16384)
                 .maxRetries(5)
                 .temperature(0.3)
@@ -79,7 +79,7 @@ public class AgentConfig {
     public StreamingChatLanguageModel anthropicStreamingChatModel(GitSolveProperties props) {
         return AnthropicStreamingChatModel.builder()
                 .apiKey(apiKey("ANTHROPIC_API_KEY"))
-                .modelName(props.llm().model())
+                .modelName(props.llm().powerModel())
                 .maxTokens(16384)
                 .build();
     }

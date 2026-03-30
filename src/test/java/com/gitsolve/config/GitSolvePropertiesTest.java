@@ -38,6 +38,8 @@ class GitSolvePropertiesTest {
 
         assertThat(props.llm().provider()).isEqualTo("anthropic");
         assertThat(props.llm().model()).isEqualTo("claude-3-5-sonnet-20241022");
+        assertThat(props.llm().liteModel()).isEqualTo("claude-haiku-test");
+        assertThat(props.llm().powerModel()).isEqualTo("claude-sonnet-test");
         assertThat(props.llm().maxTokensPerRun()).isEqualTo(500_000);
         assertThat(props.llm().maxIterationsPerFix()).isEqualTo(5);
 
