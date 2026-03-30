@@ -7,6 +7,7 @@ import com.gitsolve.model.FixResult;
 import com.gitsolve.model.GitIssue;
 import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.ReviewResult;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
@@ -71,12 +72,12 @@ public class ReviewerService {
 
             // 3. Call reviewer LLM
             long start = System.currentTimeMillis();
-            Response<String> aiResponse = reviewerAiService.reviewFix(
+            Response<AiMessage> aiResponse = reviewerAiService.reviewFix(
                     issue.title(),
                     constraintsJson,
                     fixResult.finalDiff() != null ? fixResult.finalDiff() : "");
             long durationMs = System.currentTimeMillis() - start;
-            String rawResponse = aiResponse.content();
+            String rawResponse = aiResponse.content().text();
 
             // Capture token usage and include in the returned ReviewResult
             TokenUsage tu = aiResponse.tokenUsage();

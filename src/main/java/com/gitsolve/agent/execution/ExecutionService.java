@@ -14,6 +14,7 @@ import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.ReviewResult;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
@@ -63,6 +64,13 @@ public class ExecutionService {
     /** Redacts the token from a git remote URL before logging. */
     private static final Pattern TOKEN_PATTERN =
             Pattern.compile("https://x-access-token:[^@]+@");
+
+    /**
+     * Maximum number of file paths sent to the file-selector LLM per iteration.
+     * 3000 raw paths ≈ 37k input tokens, which exceeds the Haiku per-minute limit.
+     * 200 keyword-ranked paths ≈ 2.5k tokens — well within budget.
+     */
+    private static final int FILE_SELECTOR_CAP = 200;
 
     private final ExecutionAiService   aiService;
     private final ApplicationContext   context;
@@ -180,6 +188,36 @@ public class ExecutionService {
             }
             reporter.step(recordId, ExecutionStep.BRANCH, StepStatus.DONE, branch);
 
+            // Detect build tool (Maven vs Gradle) once per run
+            BuildOutput gradleDetect = env.runBuild(
+                    "(test -f /workspace/build.gradle || test -f /workspace/build.gradle.kts || " +
+                    "test -f /workspace/settings.gradle || test -f /workspace/settings.gradle.kts) " +
+                    "&& echo gradle || echo maven");
+            boolean isGradle = gradleDetect.stdout() != null
+                    && gradleDetect.stdout().strip().equals("gradle");
+
+            // Pre-build the command prefix (wrapper detection done once)
+            final String buildCmdPrefix;
+            if (isGradle) {
+                BuildOutput wrapperCheck = env.runBuild(
+                        "test -f /workspace/gradlew && echo yes || echo no");
+                if (wrapperCheck.stdout() != null && wrapperCheck.stdout().strip().equals("yes")) {
+                    env.runBuild("chmod +x /workspace/gradlew");
+                    buildCmdPrefix = "cd /workspace && ./gradlew";
+                } else {
+                    buildCmdPrefix = "cd /workspace && gradle";
+                }
+            } else {
+                BuildOutput wrapperCheck = env.runBuild(
+                        "test -f /workspace/mvnw && echo yes || echo no");
+                buildCmdPrefix = (wrapperCheck.stdout() != null
+                        && wrapperCheck.stdout().strip().equals("yes"))
+                        ? "chmod +x /workspace/mvnw && /workspace/mvnw"
+                        : "mvn";
+            }
+            String detectedBuildTool = isGradle ? "Gradle" : "Maven";
+            log.info("[Execution] {} detected build tool: {}", issueId, detectedBuildTool);
+
             String buildError = "";
             String lastDiff   = "";
             String analysisHintsStr = affectedFiles != null ? String.join("\n", affectedFiles) : "";
@@ -196,16 +234,20 @@ public class ExecutionService {
 
                 // Re-list files each iteration so files written in previous iterations
                 // appear in the available set for the selector (avoids false hallucination drops).
-                List<String> javaFiles  = env.listJavaFiles("src");
-                String       fileListStr = String.join("\n", javaFiles);
+                List<String> javaFiles = env.listJavaFiles("");
+                // Keyword-rank and cap at FILE_SELECTOR_CAP before sending to the LLM.
+                // Sending 3000+ paths blows the per-minute input token limit (3000 paths ≈ 37k tokens).
+                // Keyword ranking ensures the most relevant files are kept.
+                List<String> selectorCandidates = keywordFallback(javaFiles, issue, FILE_SELECTOR_CAP);
+                String fileListStr = String.join("\n", selectorCandidates);
 
                 // ── Step 1: File selection ────────────────────────────────
                 // Ask the LLM which files it needs — input is paths only, no content.
                 List<String> selectedPaths;
                 try {
-                    Response<String> selectorResponse = fileSelectorAiService.selectFiles(fixInstructions, fileListStr, buildError, analysisHintsStr);
-                    String selectorRaw = selectorResponse.content();
-                    selectedPaths = fileSelectorParser.parse(selectorRaw, javaFiles);
+                    Response<AiMessage> selectorResponse = fileSelectorAiService.selectFiles(fixInstructions, fileListStr, buildError, analysisHintsStr);
+                    String selectorRaw = selectorResponse.content().text();
+                    selectedPaths = fileSelectorParser.parse(selectorRaw, selectorCandidates);
                 } catch (Exception e) {
                     log.warn("[Execution] {} iter {}: file selection failed ({}), using fallback",
                             issueId, i, e.getMessage());
@@ -229,12 +271,13 @@ public class ExecutionService {
                 String raw;
                 try {
                     long llmStart = System.currentTimeMillis();
-                    Response<String> llmResponse;
+                    Response<AiMessage> llmResponse;
                     if (i == 1) {
                         llmResponse = aiService.execute(
                                 issue.repoFullName(),
                                 issue.issueNumber(),
                                 issue.title(),
+                                detectedBuildTool,
                                 fixInstructions,
                                 sourceContext,
                                 buildError);
@@ -246,7 +289,7 @@ public class ExecutionService {
                                 buildError);
                     }
                     long llmDurationMs = System.currentTimeMillis() - llmStart;
-                    raw = llmResponse.content();
+                    raw = llmResponse.content().text();
 
                     // Accumulate token counts across iterations
                     dev.langchain4j.model.output.TokenUsage tu = llmResponse.tokenUsage();
@@ -266,12 +309,15 @@ public class ExecutionService {
                 }
 
                 // Parse
+                log.debug("[Execution] {} iter {}: raw LLM response ({} chars):\n{}",
+                        issueId, i, raw != null ? raw.length() : 0, raw);
                 ExecutionFixResponse fix;
                 try {
                     fix = parser.parse(raw);
                 } catch (ExecutionParseException e) {
                     reporter.step(recordId, ExecutionStep.APPLY_FILES, StepStatus.FAILED, "Parse error: " + e.getMessage(), i);
-                    log.warn("[Execution] {} iteration {}: parse failed — {}", issueId, i, e.getMessage());
+                    log.warn("[Execution] {} iteration {}: parse failed — {}\nRaw response was:\n{}",
+                            issueId, i, e.getMessage(), raw);
                     buildError = "Parse error: " + e.getMessage();
                     continue;
                 }
@@ -289,25 +335,36 @@ public class ExecutionService {
                 reporter.step(recordId, ExecutionStep.APPLY_FILES, StepStatus.DONE,
                         fix.files().size() + " file(s)", i);
 
-                // Run build — find the narrowest sub-module containing all changed files
-                // to avoid building the entire monorepo.
-                String buildDir = findBuildDir(fix.files());
-                BuildOutput wrapperCheck = env.runBuild("test -f /workspace/mvnw && echo yes || echo no");
-                String mvnCmd = (wrapperCheck.stdout() != null && wrapperCheck.stdout().strip().equals("yes"))
-                        ? "chmod +x /workspace/mvnw && /workspace/mvnw"
-                        : "mvn";
-                String pomPath = buildDir.isEmpty() ? "/workspace/pom.xml" : "/workspace/" + buildDir + "/pom.xml";
-                // Verify the pom exists at that path, fall back to root if not
-                BuildOutput pomCheck = env.runBuild("test -f " + pomPath + " && echo yes || echo no");
-                if (pomCheck.stdout() == null || !pomCheck.stdout().strip().equals("yes")) {
-                    pomPath = "/workspace/pom.xml";
-                }
-                log.info("[Execution] {} iteration {}: building pom={}", issueId, i, pomPath);
+                // Run build
                 reporter.step(recordId, ExecutionStep.BUILD, StepStatus.RUNNING, iterLabel, i);
-                BuildOutput buildOut = env.runBuild(mvnCmd + " -f " + pomPath + " clean package --no-transfer-progress -DskipTests=false");
+                BuildOutput buildOut;
+                if (isGradle) {
+                    log.info("[Execution] {} iteration {}: building with Gradle", issueId, i);
+                    buildOut = env.runBuild(buildCmdPrefix + " clean build --no-daemon");
+                } else {
+                    // Find narrowest sub-module containing all changed files
+                    String buildDir = findBuildDir(fix.files());
+                    String pomPath = buildDir.isEmpty()
+                            ? "/workspace/pom.xml"
+                            : "/workspace/" + buildDir + "/pom.xml";
+                    // Verify the pom exists at that path, fall back to root if not
+                    BuildOutput pomCheck = env.runBuild(
+                            "test -f " + pomPath + " && echo yes || echo no");
+                    if (pomCheck.stdout() == null || !pomCheck.stdout().strip().equals("yes")) {
+                        pomPath = "/workspace/pom.xml";
+                    }
+                    log.info("[Execution] {} iteration {}: building pom={}", issueId, i, pomPath);
+                    buildOut = env.runBuild(
+                            buildCmdPrefix + " -f " + pomPath
+                            + " clean package --no-transfer-progress -DskipTests=false");
+                }
                 lastDiff = env.getDiff();
                 log.info("[Execution] {} iteration {}: build {} (exit={})",
                         issueId, i, buildOut.buildPassed() ? "PASSED" : "FAILED", buildOut.exitCode());
+                log.debug("[Execution] {} iter {}: build stdout:\n{}", issueId, i, buildOut.stdout());
+                if (buildOut.stderr() != null && !buildOut.stderr().isBlank()) {
+                    log.debug("[Execution] {} iter {}: build stderr:\n{}", issueId, i, buildOut.stderr());
+                }
 
                 if (buildOut.buildPassed()) {
                     reporter.step(recordId, ExecutionStep.BUILD, StepStatus.DONE, iterLabel, i);
@@ -397,9 +454,8 @@ public class ExecutionService {
                 reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
                         "exit=" + buildOut.exitCode() + " (iteration " + i + ")", i);
                 buildError = buildOut.extractStackTrace();
-                log.warn("[Execution] {} iter {}: build error fed to LLM ({}chars): {}",
-                        issueId, i, buildError.length(),
-                        buildError.length() > 500 ? buildError.substring(buildError.length() - 500) : buildError);
+                log.warn("[Execution] {} iter {}: build error fed to LLM ({}chars):\n{}",
+                        issueId, i, buildError.length(), buildError);
             }
 
             log.warn("[Execution] {} exhausted {} iterations without passing build", issueId, maxIter);
@@ -442,6 +498,10 @@ public class ExecutionService {
      * @return ranked sublist of up to MAX_PATHS paths
      */
     static List<String> keywordFallback(List<String> paths, GitIssue issue) {
+        return keywordFallback(paths, issue, FileSelectorParser.MAX_PATHS);
+    }
+
+    static List<String> keywordFallback(List<String> paths, GitIssue issue, int maxResults) {
         if (paths == null || paths.isEmpty()) return List.of();
 
         // Tokenize issue title + body: split on non-word chars, lowercase, min length 3
@@ -462,7 +522,7 @@ public class ExecutionService {
             return Integer.compare(scoreB, scoreA); // descending
         });
 
-        return ranked.subList(0, Math.min(FileSelectorParser.MAX_PATHS, ranked.size()));
+        return ranked.subList(0, Math.min(maxResults, ranked.size()));
     }
 
     /** Counts how many tokens from {@code tokens} appear as substrings of {@code lowerPath}. */

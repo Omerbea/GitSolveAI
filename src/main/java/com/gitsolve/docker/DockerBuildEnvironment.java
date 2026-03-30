@@ -1,6 +1,7 @@
 package com.gitsolve.docker;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
@@ -213,7 +214,7 @@ public class DockerBuildEnvironment implements BuildEnvironment {
     @Override
     public BuildOutput runBuild(String command) throws BuildEnvironmentException {
         ensureContainerRunning();
-        return execCommand(command);
+        return execCommand(command, true);
     }
 
     @Override
@@ -227,19 +228,16 @@ public class DockerBuildEnvironment implements BuildEnvironment {
     public void close() {
         if (closed || containerId == null) return;
         closed = true;
+        String shortId = containerId.substring(0, 12);
         try {
-            dockerClient.stopContainerCmd(containerId).withTimeout(10).exec();
-        } catch (Exception e) {
-            log.debug("Container {} stop: {}", containerId, e.getMessage());
-        }
-        try {
+            // force=true stops the container before removal — no separate stop needed
             dockerClient.removeContainerCmd(containerId)
                     .withRemoveVolumes(true)
                     .withForce(true)
                     .exec();
-            log.debug("Removed container {}", containerId);
+            log.debug("Removed container {}", shortId);
         } catch (Exception e) {
-            log.warn("Failed to remove container {}: {}", containerId, e.getMessage());
+            log.warn("Failed to remove container {}: {}", shortId, e.getMessage());
         }
     }
 
@@ -312,9 +310,40 @@ public class DockerBuildEnvironment implements BuildEnvironment {
             containerId = response.getId();
             dockerClient.startContainerCmd(containerId).exec();
             log.debug("Started container {}", containerId);
+            streamContainerLogs(containerId);
         } catch (Exception e) {
             throw new BuildEnvironmentException("Failed to start Docker container", e);
         }
+    }
+
+    // ------------------------------------------------------------------ //
+    // Container log streaming                                             //
+    // ------------------------------------------------------------------ //
+
+    private void streamContainerLogs(String id) {
+        Thread.ofVirtual().name("container-logs-" + id.substring(0, 12)).start(() -> {
+            try {
+                dockerClient.logContainerCmd(id)
+                        .withStdOut(true)
+                        .withStdErr(true)
+                        .withFollowStream(true)
+                        .withTailAll()
+                        .exec(new ResultCallback.Adapter<Frame>() {
+                            @Override
+                            public void onNext(Frame frame) {
+                                String line = new String(frame.getPayload(), StandardCharsets.UTF_8).stripTrailing();
+                                if (frame.getStreamType() == StreamType.STDERR) {
+                                    log.debug("[container:{}] STDERR {}", id.substring(0, 12), line);
+                                } else {
+                                    log.debug("[container:{}] {}", id.substring(0, 12), line);
+                                }
+                            }
+                        })
+                        .awaitCompletion();
+            } catch (Exception e) {
+                log.debug("[container:{}] log stream ended: {}", id.substring(0, 12), e.getMessage());
+            }
+        });
     }
 
     // ------------------------------------------------------------------ //
@@ -322,6 +351,10 @@ public class DockerBuildEnvironment implements BuildEnvironment {
     // ------------------------------------------------------------------ //
 
     private BuildOutput execCommand(String command) throws BuildEnvironmentException {
+        return execCommand(command, false);
+    }
+
+    private BuildOutput execCommand(String command, boolean streamOutput) throws BuildEnvironmentException {
         try {
             ExecCreateCmdResponse execResponse = dockerClient.execCreateCmd(containerId)
                     .withCmd("sh", "-c", command)
@@ -335,8 +368,23 @@ public class DockerBuildEnvironment implements BuildEnvironment {
             Instant start = Instant.now();
             int timeout = props.docker().buildTimeoutSeconds();
 
+            ResultCallback.Adapter<Frame> callback = streamOutput
+                    ? new StreamingCallback(stdout, stderr, log, containerId.substring(0, 12))
+                    : new ResultCallback.Adapter<>() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            if (frame == null || frame.getPayload() == null) return;
+                            try {
+                                if (frame.getStreamType() == StreamType.STDERR)
+                                    stderr.write(frame.getPayload());
+                                else
+                                    stdout.write(frame.getPayload());
+                            } catch (IOException ignored) {}
+                        }
+                    };
+
             boolean completed = dockerClient.execStartCmd(execResponse.getId())
-                    .exec(new ExecStartResultCallback(stdout, stderr))
+                    .exec(callback)
                     .awaitCompletion(timeout, TimeUnit.SECONDS);
 
             Duration duration = Duration.between(start, Instant.now());
@@ -358,6 +406,72 @@ public class DockerBuildEnvironment implements BuildEnvironment {
             throw new BuildEnvironmentException("Build command interrupted: " + command, e);
         } catch (Exception e) {
             throw new BuildEnvironmentException("Failed to exec command: " + command, e);
+        }
+    }
+
+    /**
+     * Streams Docker exec output line-by-line to the logger while also buffering
+     * the full output for return. Used by {@link #runBuild} so long-running commands
+     * (Gradle, Maven) produce real-time log output instead of silent blocking.
+     */
+    private static class StreamingCallback extends ResultCallback.Adapter<Frame> {
+
+        private final ByteArrayOutputStream stdout;
+        private final ByteArrayOutputStream stderr;
+        private final Logger log;
+        private final String shortId;
+        // buffers the current partial line across frame boundaries
+        private final StringBuilder lineBuffer = new StringBuilder();
+
+        StreamingCallback(ByteArrayOutputStream stdout, ByteArrayOutputStream stderr,
+                          Logger log, String shortId) {
+            this.stdout  = stdout;
+            this.stderr  = stderr;
+            this.log     = log;
+            this.shortId = shortId;
+        }
+
+        @Override
+        public void onNext(Frame frame) {
+            if (frame == null || frame.getPayload() == null) return;
+            byte[] payload = frame.getPayload();
+            boolean isStderr = frame.getStreamType() == StreamType.STDERR;
+
+            // Buffer for full output capture
+            try {
+                if (isStderr) stderr.write(payload);
+                else          stdout.write(payload);
+            } catch (IOException ignored) {}
+
+            // Stream line-by-line to logger
+            String text = new String(payload, StandardCharsets.UTF_8);
+            int start = 0;
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) == '\n') {
+                    lineBuffer.append(text, start, i);
+                    String line = lineBuffer.toString().stripTrailing();
+                    if (!line.isEmpty()) {
+                        if (isStderr) log.debug("[build:{}] ERR {}", shortId, line);
+                        else          log.debug("[build:{}] {}", shortId, line);
+                    }
+                    lineBuffer.setLength(0);
+                    start = i + 1;
+                }
+            }
+            // Remainder (no newline yet) — keep in buffer
+            if (start < text.length()) {
+                lineBuffer.append(text, start, text.length());
+            }
+        }
+
+        @Override
+        public void onComplete() {
+            // Flush any unterminated last line
+            if (!lineBuffer.isEmpty()) {
+                log.debug("[build:{}] {}", shortId, lineBuffer.toString().stripTrailing());
+                lineBuffer.setLength(0);
+            }
+            super.onComplete();
         }
     }
 

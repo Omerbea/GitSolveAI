@@ -60,11 +60,24 @@ public class FileSelectorParser {
         List<String> valid = new ArrayList<>();
         for (String path : response.paths()) {
             if (path == null || path.isBlank()) continue;
-            if (!available.contains(path)) {
-                log.debug("[FileSelector] Dropping hallucinated path: {}", path);
-                continue;
+            if (available.contains(path)) {
+                valid.add(path);
+            } else {
+                // Fuzzy fallback: accept if an available path ends with the suggested path.
+                // Handles cases where the LLM omits a leading directory component
+                // (e.g. suggests "foo/Bar.java" but actual path is "tests/foo/Bar.java").
+                String resolved = availablePaths.stream()
+                        .filter(p -> p.endsWith("/" + path) || p.endsWith(path))
+                        .findFirst()
+                        .orElse(null);
+                if (resolved != null) {
+                    log.debug("[FileSelector] Resolved partial path '{}' → '{}'", path, resolved);
+                    valid.add(resolved);
+                } else {
+                    log.debug("[FileSelector] Dropping hallucinated path: {}", path);
+                    continue;
+                }
             }
-            valid.add(path);
             if (valid.size() >= MAX_PATHS) break;
         }
 

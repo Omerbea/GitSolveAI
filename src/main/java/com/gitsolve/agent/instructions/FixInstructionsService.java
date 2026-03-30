@@ -3,6 +3,7 @@ package com.gitsolve.agent.instructions;
 import com.gitsolve.github.GitHubClient;
 import com.gitsolve.model.FixReport;
 import com.gitsolve.model.PhaseStats;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
@@ -84,13 +85,13 @@ public class FixInstructionsService {
                     commits != null ? commits.size() : 0);
 
             long start = System.currentTimeMillis();
-            Response<String> response = aiService.generateInstructions(
+            Response<AiMessage> response = aiService.generateInstructions(
                     repoFullName, issueNumber, issueTitle,
                     rootCause, affectedFiles, approach, patterns,
                     readme, contributing, recentCommits
             );
             long durationMs = System.currentTimeMillis() - start;
-            String result = response.content();
+            String result = response.content().text();
 
             // Capture token usage for observability (T02 will thread into domain model)
             TokenUsage tu = response.tokenUsage();

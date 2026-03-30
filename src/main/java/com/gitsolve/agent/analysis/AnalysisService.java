@@ -5,6 +5,7 @@ import com.gitsolve.model.GitIssue;
 import com.gitsolve.model.PhaseStats;
 import com.gitsolve.model.TriageResult;
 import com.gitsolve.repocache.RepoCache;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.model.output.TokenUsage;
 import org.slf4j.Logger;
@@ -69,7 +70,7 @@ public class AnalysisService {
 
             String raw;
             long start = System.currentTimeMillis();
-            Response<String> response = aiService.analyse(
+            Response<AiMessage> response = aiService.analyse(
                     issue.repoFullName(),
                     issue.issueNumber(),
                     issue.title(),
@@ -78,7 +79,7 @@ public class AnalysisService {
                     sourceContext
             );
             long durationMs = System.currentTimeMillis() - start;
-            raw = response.content();
+            raw = response.content().text();
 
             String json = extractJson(raw);
             AnalysisResult parsed = objectMapper.readValue(json, AnalysisResult.class);

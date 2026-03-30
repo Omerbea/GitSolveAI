@@ -1,5 +1,6 @@
 package com.gitsolve.agent.instructions;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
@@ -60,7 +61,7 @@ public interface FixInstructionsAiService {
 
             Generate the fix instructions now.
             """)
-    Response<String> generateInstructions(
+    Response<AiMessage> generateInstructions(
             @V("repoFullName")       String repoFullName,
             @V("issueNumber")        int issueNumber,
             @V("issueTitle")         String issueTitle,

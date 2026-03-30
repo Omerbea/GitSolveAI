@@ -1,5 +1,6 @@
 package com.gitsolve.agent.analysis;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
@@ -48,7 +49,7 @@ public interface AnalysisAiService {
 
             Analyse this issue as a senior engineer. Reply with the JSON object only.
             """)
-    Response<String> analyse(
+    Response<AiMessage> analyse(
             @V("repoFullName")     String repoFullName,
             @V("issueNumber")      int issueNumber,
             @V("issueTitle")       String issueTitle,

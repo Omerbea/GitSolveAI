@@ -14,6 +14,7 @@ import com.gitsolve.model.ReviewResult;
 import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.repocache.RepoCache;
 import com.gitsolve.repocache.RepoCacheException;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -90,15 +91,15 @@ class ExecutionServiceTest {
         when(ctx.getBean(DockerBuildEnvironment.class)).thenReturn(env);
         when(gitHubClient.forkRepo(anyString())).thenReturn(Mono.just("bot/commons-lang"));
         when(repoCache.ensureFork(anyString())).thenReturn(tempDir);
-        when(aiService.execute(anyString(), anyInt(), anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(Response.from(VALID_JSON, null, null));
+        when(aiService.execute(anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
         lenient().when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(Response.from(VALID_JSON, null, null));
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
         when(parserMock.parse(anyString())).thenReturn(VALID_RESPONSE);
         when(env.listJavaFiles(anyString())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.getDiff()).thenReturn("--- a/Foo.java\n+++ b/Foo.java\n@@ -1 +1 @@");
         // File selector stubs — return empty so fallback path is exercised
-        when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn(Response.from("{\"paths\":[\"src/main/java/Foo.java\"]}", null, null));
+        when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn(Response.from(new AiMessage("{\"paths\":[\"src/main/java/Foo.java\"]}"), null, null));
         when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.readFile(anyString())).thenReturn(java.util.Optional.of("// stub content"));
         lenient().when(reviewerService.review(any(), any())).thenReturn(new ReviewResult(true, List.of(), "LGTM"));
@@ -310,7 +311,7 @@ class ExecutionServiceTest {
                 .thenReturn(buildPass); // git push
 
         when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(Response.from(VALID_JSON, null, null));
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
         when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 
@@ -322,7 +323,7 @@ class ExecutionServiceTest {
 
         // execute() must be called exactly once (iteration 1 only)
         verify(aiService, times(1)).execute(
-                anyString(), anyInt(), anyString(), anyString(), anyString(), anyString());
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyString(), anyString());
 
         // executeFollowUp() must be called exactly once (iteration 2 only)
         verify(aiService, times(1)).executeFollowUp(
@@ -376,7 +377,7 @@ class ExecutionServiceTest {
                 .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
 
         when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
-                .thenReturn(Response.from(VALID_JSON, null, null));
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
         when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 

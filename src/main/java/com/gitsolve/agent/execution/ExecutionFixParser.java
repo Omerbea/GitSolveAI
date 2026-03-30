@@ -1,7 +1,13 @@
 package com.gitsolve.agent.execution;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Parses and validates the raw LLM response from {@link ExecutionAiService}.
@@ -19,6 +25,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ExecutionFixParser {
 
+    private static final Logger log = LoggerFactory.getLogger(ExecutionFixParser.class);
     private static final int MIN_CONTENT_LENGTH = 10;
 
     private final ObjectMapper objectMapper;
@@ -44,7 +51,12 @@ public class ExecutionFixParser {
         }
 
         if (response.files() == null || response.files().isEmpty()) {
-            throw new ExecutionParseException("LLM returned no files to modify");
+            // Fallback: LLM returned a GitHub PR-style schema instead of the required one.
+            // Try remapping pull_request.commits[].changes[] → files[]
+            response = tryRemapPrSchema(json, response);
+            if (response.files() == null || response.files().isEmpty()) {
+                throw new ExecutionParseException("LLM returned no files to modify");
+            }
         }
 
         for (int i = 0; i < response.files().size(); i++) {
@@ -65,6 +77,66 @@ public class ExecutionFixParser {
         }
 
         return response;
+    }
+
+    // ------------------------------------------------------------------ //
+    // Alternative schema remapper                                          //
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Handles the case where the LLM returns a GitHub PR-style schema:
+     * {@code pull_request.commits[].changes[]{path, content}} instead of {@code files[]}.
+     * Extracts all changes across all commits and maps them to {@link FileChange} entries.
+     */
+    private ExecutionFixResponse tryRemapPrSchema(String json, ExecutionFixResponse original) {
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode pr = root.path("pull_request");
+            if (pr.isMissingNode()) return original;
+
+            List<FileChange> files = new ArrayList<>();
+            for (JsonNode commit : pr.path("commits")) {
+                for (JsonNode change : commit.path("changes")) {
+                    String path    = change.path("path").asText(null);
+                    String content = change.path("content").asText(null);
+                    if (path != null && content != null) {
+                        files.add(new FileChange(path, content));
+                    }
+                }
+            }
+            // Also try top-level "output" array: {"output": [{"type": "modified", "path": "...", "content": "..."}]}
+            if (files.isEmpty()) {
+                for (JsonNode change : root.path("output")) {
+                    String path    = change.path("path").asText(null);
+                    String content = change.path("content").asText(null);
+                    if (path != null && content != null) {
+                        files.add(new FileChange(path, content));
+                    }
+                }
+            }
+
+            if (files.isEmpty()) return original;
+
+            String commitMessage = original.commitMessage();
+            if (commitMessage == null || commitMessage.isBlank()) {
+                JsonNode firstCommit = pr.path("commits").path(0);
+                commitMessage = firstCommit.path("message").asText("fix: apply changes");
+            }
+            String prTitle = original.prTitle();
+            if (prTitle == null || prTitle.isBlank()) {
+                prTitle = pr.path("title").asText("Fix");
+            }
+            String prBody = original.prBody();
+            if (prBody == null || prBody.isBlank()) {
+                prBody = pr.path("body").asText("");
+            }
+
+            log.debug("Remapped PR-schema response: {} file(s) extracted", files.size());
+            return new ExecutionFixResponse(files, commitMessage, prTitle, prBody);
+        } catch (Exception e) {
+            log.debug("PR-schema remap failed: {}", e.getMessage());
+            return original;
+        }
     }
 
     // ------------------------------------------------------------------ //

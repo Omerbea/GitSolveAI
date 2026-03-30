@@ -1,5 +1,6 @@
 package com.gitsolve.agent.execution;
 
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.output.Response;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.UserMessage;
@@ -31,7 +32,7 @@ import dev.langchain4j.service.V;
 
         Your task is to return ALL files that need to be created or modified to implement the fix.
 
-        Return ONLY valid JSON with this exact schema — no markdown fences, no prose:
+        YOU MUST RESPOND WITH ONLY THIS EXACT JSON SCHEMA. NO OTHER FORMAT IS ACCEPTABLE:
         {
           "files": [
             {"path": "relative/path/to/File.java", "content": "<complete file content>"},
@@ -42,11 +43,17 @@ import dev.langchain4j.service.V;
           "prBody": "<markdown PR body; must end with Closes #<issueNumber>>"
         }
 
-        Critical rules:
-        - Include the COMPLETE file content for each entry — never truncate.
-        - Only include files you are actually changing — do not return unchanged files.
-        - The prBody must reference the issue using "Closes #<issueNumber>".
-        - If a build error is provided, your response must fix that error.
+        CRITICAL — DO NOT:
+        - Use any other JSON schema (no "operations", no "pull_request", no "commits", no "changes" keys)
+        - Ask to view files or request more information — use only what is provided
+        - Include markdown fences, prose, or explanation outside the JSON
+        - Truncate file content
+
+        DO:
+        - Include the COMPLETE file content for each entry in "files"
+        - Only include files you are actually changing
+        - Reference the issue in prBody using "Closes #<issueNumber>"
+        - Fix any build error provided
         """)
 public interface ExecutionAiService {
 
@@ -58,6 +65,7 @@ public interface ExecutionAiService {
     @UserMessage("""
             Repository: {{repoFullName}}
             Issue #{{issueNumber}}: {{issueTitle}}
+            Build tool: {{buildTool}}
 
             === FIX INSTRUCTIONS ===
             {{fixInstructions}}
@@ -70,10 +78,11 @@ public interface ExecutionAiService {
 
             Implement the fix now. Return only the JSON object.
             """)
-    Response<String> execute(
+    Response<AiMessage> execute(
             @V("repoFullName")     String repoFullName,
             @V("issueNumber")      int    issueNumber,
             @V("issueTitle")       String issueTitle,
+            @V("buildTool")        String buildTool,
             @V("fixInstructions")  String fixInstructions,
             @V("sourceContext")    String sourceContext,
             @V("buildError")       String buildError
@@ -95,7 +104,7 @@ public interface ExecutionAiService {
 
             The previous fix attempt failed. Apply corrections and return the updated JSON object.
             """)
-    Response<String> executeFollowUp(
+    Response<AiMessage> executeFollowUp(
             @V("repoFullName")  String repoFullName,
             @V("issueNumber")   int    issueNumber,
             @V("issueTitle")    String issueTitle,
