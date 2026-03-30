@@ -94,7 +94,7 @@ class ExecutionServiceTest {
         when(env.listJavaFiles(anyString())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.getDiff()).thenReturn("--- a/Foo.java\n+++ b/Foo.java\n@@ -1 +1 @@");
         // File selector stubs — return empty so fallback path is exercised
-        when(fileSelectorAiService.selectFiles(anyString(), anyString())).thenReturn("{\"paths\":[\"src/main/java/Foo.java\"]}");
+        when(fileSelectorAiService.selectFiles(anyString(), anyString(), anyString(), anyString())).thenReturn("{\"paths\":[\"src/main/java/Foo.java\"]}");
         when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.readFile(anyString())).thenReturn(java.util.Optional.of("// stub content"));
     }
@@ -113,7 +113,7 @@ class ExecutionServiceTest {
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 
         GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
-        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X");
+        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X", List.of());
 
         assertThat(result.success()).isTrue();
         assertThat(result.prUrl()).isEqualTo("https://github.com/apache/commons-lang/pull/99");
@@ -138,7 +138,7 @@ class ExecutionServiceTest {
                 .thenReturn(buildFailed); // all subsequent (mvn clean test)
 
         GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
-        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X");
+        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X", List.of());
 
         assertThat(result.success()).isFalse();
         assertThat(result.failureReason()).containsIgnoringCase("Exhausted");
@@ -168,7 +168,7 @@ class ExecutionServiceTest {
 
             GitIssue issue = new GitIssue(
                     "apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
-            service.execute(issue, "Fix the NPE by changing Foo.java");
+            service.execute(issue, "Fix the NPE by changing Foo.java", List.of());
 
             // Assert that the actual token string ('test-token') never appears in any log message
             String token = "test-token"; // matches props.github().appToken() set in setUp()
@@ -215,7 +215,7 @@ class ExecutionServiceTest {
         GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
 
         // Act
-        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X");
+        ExecutionResult result = service.execute(issue, "Fix the NPE by doing X", List.of());
 
         // Assert: writeFile called with the injection-containing message
         verify(env).writeFile(eq(".gitsolve_commit_msg"), contains("$(id)"));
@@ -278,7 +278,7 @@ class ExecutionServiceTest {
                 .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
 
         GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
-        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X");
+        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X", List.of());
 
         assertThat(result.success()).isTrue();
         assertThat(result.iterations()).isEqualTo(2);

@@ -39,10 +39,18 @@ public interface FileSelectorAiService {
             Available files (one per line):
             {{filePaths}}
 
+            Build error from previous attempt (empty on first iteration):
+            {{buildError}}
+
+            Analysis-suggested files (use as priority hints, may be empty):
+            {{analysisHints}}
+
             Return the JSON object with the paths you need.
             """)
     String selectFiles(
             @V("fixInstructions") String fixInstructions,
-            @V("filePaths")       String filePaths
+            @V("filePaths")       String filePaths,
+            @V("buildError")      String buildError,
+            @V("analysisHints")   String analysisHints
     );
 }

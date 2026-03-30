@@ -91,7 +91,7 @@ class FixLoopOrchestratorTest {
         // Default stubs for the execution+review path
         mockExecution = mock(ExecutionService.class);
         when(mockCtx.getBean(ExecutionService.class)).thenReturn(mockExecution);
-        when(mockExecution.execute(any(), anyString()))
+        when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.success("https://github.com/fork/repo/pull/1", "diff", 1));
         when(mockFixInstructions.generate(anyString(), anyInt(), anyString(), any()))
                 .thenReturn("Fix instructions text");
@@ -213,7 +213,7 @@ class FixLoopOrchestratorTest {
     void runFixLoop_executionFails_markExecutionFailedCalled() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockExecution.execute(any(), anyString()))
+        when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.failure("Build failed after 3 attempts", "", 3));
 
         orchestrator.runFixLoop();
@@ -232,7 +232,7 @@ class FixLoopOrchestratorTest {
     void runFixLoop_executionWired_exactPrUrlMarkPrSubmitted() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockExecution.execute(any(), anyString()))
+        when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.success(
                         "https://github.com/apache/commons-lang/pull/1", "diff...", 2));
         when(mockReviewer.review(any(), any()))
@@ -254,7 +254,7 @@ class FixLoopOrchestratorTest {
     void runFixLoop_executionFailure_failureMessageInMarkExecutionFailed() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
-        when(mockExecution.execute(any(), anyString()))
+        when(mockExecution.execute(any(), anyString(), any()))
                 .thenReturn(ExecutionResult.failure("Build failed after 3 attempts", "", 3));
 
         orchestrator.runFixLoop();

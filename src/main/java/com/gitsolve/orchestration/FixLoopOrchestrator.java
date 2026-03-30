@@ -189,7 +189,7 @@ public class FixLoopOrchestrator {
                     ExecutionService executionService =
                             applicationContext.getBean(ExecutionService.class);
                     executionService.setProgressReporter(recordId, NoopProgressReporter.INSTANCE);
-                    ExecutionResult executionResult = executionService.execute(issue, fixInstructions);
+                    ExecutionResult executionResult = executionService.execute(issue, fixInstructions, analysis.affectedFiles());
 
                     if (executionResult.success()) {
                         // --- Reviewer Agent ---

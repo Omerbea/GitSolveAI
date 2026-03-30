@@ -214,7 +214,7 @@ public class DashboardController {
             try {
                 ExecutionService executor = applicationContext.getBean(ExecutionService.class);
                 executor.setProgressReporter(id, new SseExecutionProgressReporter(sseRegistry));
-                var result = executor.execute(issue, fixInstructions);
+                var result = executor.execute(issue, fixInstructions, List.of());
                 if (result.success()) {
                     issueStore.markPrSubmitted(id, result.prUrl());
                     sseRegistry.broadcast("execution-complete",

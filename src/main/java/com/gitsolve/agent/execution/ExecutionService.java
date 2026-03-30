@@ -112,9 +112,10 @@ public class ExecutionService {
      *
      * @param issue           the GitHub issue to fix
      * @param fixInstructions the pre-generated fix instructions from {@code FixInstructionsService}
+     * @param affectedFiles   analysis-identified file hints passed to the file selector on every iteration
      * @return an {@link ExecutionResult} with success/failure, PR URL (on success), and diagnostics
      */
-    public ExecutionResult execute(GitIssue issue, String fixInstructions) {
+    public ExecutionResult execute(GitIssue issue, String fixInstructions, List<String> affectedFiles) {
         String issueId = issue.repoFullName() + "#" + issue.issueNumber();
         String branch  = "gitsolve/issue-" + issue.issueNumber();
         int    maxIter = props.llm().maxIterationsPerFix();
@@ -172,6 +173,7 @@ public class ExecutionService {
 
             String buildError = "";
             String lastDiff   = "";
+            String analysisHintsStr = affectedFiles != null ? String.join("\n", affectedFiles) : "";
 
             for (int i = 1; i <= maxIter; i++) {
                 log.info("[Execution] {} iteration {}/{}", issueId, i, maxIter);
@@ -186,7 +188,7 @@ public class ExecutionService {
                 // Ask the LLM which files it needs — input is paths only, no content.
                 List<String> selectedPaths;
                 try {
-                    String selectorRaw = fileSelectorAiService.selectFiles(fixInstructions, fileListStr);
+                    String selectorRaw = fileSelectorAiService.selectFiles(fixInstructions, fileListStr, buildError, analysisHintsStr);
                     selectedPaths = fileSelectorParser.parse(selectorRaw, javaFiles);
                 } catch (Exception e) {
                     log.warn("[Execution] {} iter {}: file selection failed ({}), using fallback",
