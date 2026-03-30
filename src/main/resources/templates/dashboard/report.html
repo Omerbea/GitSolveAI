@@ -393,6 +393,58 @@
             border-top: 1px solid var(--slate-100);
         }
 
+        /* Telemetry panel */
+        .telemetry-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 24px;
+        }
+
+        .phase-card {
+            background: #fff;
+            border: 1px solid var(--slate-200);
+            border-left-width: 4px;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .phase-card__title {
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--slate-700);
+            margin-bottom: 12px;
+        }
+
+        .phase-card__stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 4px 0;
+            border-bottom: 1px solid var(--slate-100);
+        }
+
+        .phase-card__stat:last-child { border-bottom: none; }
+
+        .phase-card__stat-label {
+            color: var(--slate-500);
+            font-size: 13px;
+        }
+
+        .phase-card__stat-value {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+            font-size: 13px;
+            font-variant-numeric: tabular-nums;
+            color: var(--slate-800);
+        }
+
+        .phase-card--analysis     { border-left-color: var(--indigo-500); }
+        .phase-card--fileselector { border-left-color: #f59e0b; }
+        .phase-card--execution    { border-left-color: var(--green-600); }
+        .phase-card--reviewer     { border-left-color: var(--purple-600); }
+
         /* Instructions section */
         .instructions-section {
             margin-top: 32px;
@@ -857,6 +909,146 @@
             <div class="report-footer"
                  th:text="${'Analysis generated: ' + #temporals.format(report.generatedAt(), 'yyyy-MM-dd HH:mm:ss')}">
                 generated
+            </div>
+
+            <!-- Telemetry panel -->
+            <div th:if="${report != null and report.telemetry() != null}">
+                <div class="section-heading">Agent Telemetry</div>
+                <div class="telemetry-panel">
+
+                    <!-- Analysis card -->
+                    <div class="phase-card phase-card--analysis"
+                         th:if="${report.telemetry().analysis() != null}">
+                        <div class="phase-card__title">Analysis</div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Input tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().analysis().inputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Output tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().analysis().outputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Model</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().analysis().modelName()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Duration</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().analysis().durationMs() + ' ms'}">—</span>
+                        </div>
+                        <div class="phase-card__stat"
+                             th:if="${report.telemetry().analysis().phaseDetail() != null
+                                      and !report.telemetry().analysis().phaseDetail().isEmpty()}">
+                            <span class="phase-card__stat-label">Detail</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().analysis().phaseDetail()}">—</span>
+                        </div>
+                    </div>
+
+                    <!-- File Selection card -->
+                    <div class="phase-card phase-card--fileselector"
+                         th:if="${report.telemetry().fileSelector() != null}">
+                        <div class="phase-card__title">File Selection</div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Input tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().fileSelector().inputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Output tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().fileSelector().outputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Model</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().fileSelector().modelName()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Duration</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().fileSelector().durationMs() + ' ms'}">—</span>
+                        </div>
+                        <div class="phase-card__stat"
+                             th:if="${report.telemetry().fileSelector().phaseDetail() != null
+                                      and !report.telemetry().fileSelector().phaseDetail().isEmpty()}">
+                            <span class="phase-card__stat-label">Detail</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().fileSelector().phaseDetail()}">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Execution card -->
+                    <div class="phase-card phase-card--execution"
+                         th:if="${report.telemetry().execution() != null}">
+                        <div class="phase-card__title">Execution</div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Input tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().execution().inputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Output tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().execution().outputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Model</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().execution().modelName()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Duration</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().execution().durationMs() + ' ms'}">—</span>
+                        </div>
+                        <div class="phase-card__stat"
+                             th:if="${report.telemetry().execution().phaseDetail() != null
+                                      and !report.telemetry().execution().phaseDetail().isEmpty()}">
+                            <span class="phase-card__stat-label">Detail</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().execution().phaseDetail()}">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Reviewer card -->
+                    <div class="phase-card phase-card--reviewer"
+                         th:if="${report.telemetry().reviewer() != null}">
+                        <div class="phase-card__title">Reviewer</div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Input tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().reviewer().inputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Output tokens</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().reviewer().outputTokens()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Model</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().reviewer().modelName()}">—</span>
+                        </div>
+                        <div class="phase-card__stat">
+                            <span class="phase-card__stat-label">Duration</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().reviewer().durationMs() + ' ms'}">—</span>
+                        </div>
+                        <div class="phase-card__stat"
+                             th:if="${report.telemetry().reviewer().phaseDetail() != null
+                                      and !report.telemetry().reviewer().phaseDetail().isEmpty()}">
+                            <span class="phase-card__stat-label">Detail</span>
+                            <span class="phase-card__stat-value"
+                                  th:text="${report.telemetry().reviewer().phaseDetail()}">—</span>
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
             <!-- Fix Instructions section -->
