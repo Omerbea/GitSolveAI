@@ -2,6 +2,10 @@ package com.gitsolve.orchestration;
 
 import com.gitsolve.agent.analysis.AnalysisResult;
 import com.gitsolve.agent.analysis.AnalysisService;
+import com.gitsolve.agent.execution.ExecutionService;
+import com.gitsolve.agent.execution.NoopProgressReporter;
+import com.gitsolve.agent.instructions.FixInstructionsService;
+import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.agent.scout.ScoutService;
 import com.gitsolve.agent.triage.TriageService;
 import com.gitsolve.config.GitSolveProperties;
@@ -14,6 +18,8 @@ import com.gitsolve.persistence.entity.RunLog;
 import com.gitsolve.telemetry.AgentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -21,16 +27,19 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * Analysis Loop Orchestrator — discovers issues, triages them, and produces
- * a senior-engineer investigation report for each accepted issue.
+ * Fix Loop Orchestrator — discovers issues, triages them, analyses each one,
+ * generates fix instructions, executes the fix in a sandboxed environment,
+ * and runs a governance review before submitting a pull request.
  *
  * <p>Pipeline per run:
  * <ol>
  *   <li><b>Scout</b>: discover repos, fetch good-first-issues.</li>
  *   <li><b>Triage</b>: batch-classify; only EASY/MEDIUM issues proceed.</li>
- *   <li><b>Analysis Agent</b>: for each accepted issue, produce a structured
- *       investigation report (root cause, affected files, suggested approach).
- *       No code writing. No Docker. No build loop.</li>
+ *   <li><b>Analysis Agent</b>: produce a structured investigation report
+ *       (root cause, affected files, suggested approach).</li>
+ *   <li><b>Fix Instructions</b>: generate repo-specific coding instructions.</li>
+ *   <li><b>Execution Agent</b>: fork → clone → LLM fix → build loop → push → PR.</li>
+ *   <li><b>Reviewer Agent</b>: governance check on the produced diff.</li>
  * </ol>
  */
 @Component
@@ -38,32 +47,42 @@ public class FixLoopOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(FixLoopOrchestrator.class);
 
-    private final ScoutService       scoutService;
-    private final TriageService      triageService;
-    private final AnalysisService    analysisService;
-    private final IssueStore         issueStore;
-    private final SettingsStore      settingsStore;
-    private final AgentMetrics       metrics;
-    private final GitSolveProperties props;
-    private final SseEmitterRegistry sseRegistry;
+    private final ScoutService           scoutService;
+    private final TriageService          triageService;
+    private final AnalysisService        analysisService;
+    private final IssueStore             issueStore;
+    private final SettingsStore          settingsStore;
+    private final AgentMetrics           metrics;
+    private final GitSolveProperties     props;
+    private final SseEmitterRegistry     sseRegistry;
+    private final ApplicationContext     applicationContext;
+    private final FixInstructionsService fixInstructionsService;
+    private final ReviewerService        reviewerService;
 
+    @Autowired
     public FixLoopOrchestrator(
-            ScoutService       scoutService,
-            TriageService      triageService,
-            AnalysisService    analysisService,
-            IssueStore         issueStore,
-            SettingsStore      settingsStore,
-            AgentMetrics       metrics,
-            GitSolveProperties props,
-            SseEmitterRegistry sseRegistry) {
-        this.scoutService    = scoutService;
-        this.triageService   = triageService;
-        this.analysisService = analysisService;
-        this.issueStore      = issueStore;
-        this.settingsStore   = settingsStore;
-        this.metrics         = metrics;
-        this.props           = props;
-        this.sseRegistry     = sseRegistry;
+            ScoutService           scoutService,
+            TriageService          triageService,
+            AnalysisService        analysisService,
+            IssueStore             issueStore,
+            SettingsStore          settingsStore,
+            AgentMetrics           metrics,
+            GitSolveProperties     props,
+            SseEmitterRegistry     sseRegistry,
+            ApplicationContext     applicationContext,
+            FixInstructionsService fixInstructionsService,
+            ReviewerService        reviewerService) {
+        this.scoutService           = scoutService;
+        this.triageService          = triageService;
+        this.analysisService        = analysisService;
+        this.issueStore             = issueStore;
+        this.settingsStore          = settingsStore;
+        this.metrics                = metrics;
+        this.props                  = props;
+        this.sseRegistry            = sseRegistry;
+        this.applicationContext     = applicationContext;
+        this.fixInstructionsService = fixInstructionsService;
+        this.reviewerService        = reviewerService;
     }
 
     // ------------------------------------------------------------------ //
@@ -159,12 +178,59 @@ public class FixLoopOrchestrator {
                     );
 
                     issueStore.saveFixReport(recordId, report);
-                    issueStore.markSuccess(recordId, "", analysis.suggestedApproach(), 0);
-                    metrics.recordIssueSucceeded();
 
-                    // Push to all connected dashboard clients
-                    sseRegistry.broadcast("issue-analysed", buildIssueEvent(
-                            recordId, issue, analysis, affectedFilesStr));
+                    // --- Fix Instructions ---
+                    String fixInstructions = fixInstructionsService.generate(
+                            issue.repoFullName(), issue.issueNumber(), issue.title(), report);
+                    issueStore.saveFixInstructions(recordId, fixInstructions);
+                    issueStore.markExecuting(recordId);
+
+                    // --- Execution Agent (prototype — fresh memory per issue) ---
+                    ExecutionService executionService =
+                            applicationContext.getBean(ExecutionService.class);
+                    executionService.setProgressReporter(recordId, NoopProgressReporter.INSTANCE);
+                    ExecutionResult executionResult = executionService.execute(issue, fixInstructions);
+
+                    if (executionResult.success()) {
+                        // --- Reviewer Agent ---
+                        FixResult fixResult = new FixResult(
+                                issue.repoFullName() + "#" + issue.issueNumber(),
+                                true,
+                                List.of(),
+                                executionResult.diff(),
+                                null);
+                        ReviewResult reviewResult = reviewerService.review(fixResult, issue);
+
+                        FixReport updatedReport = new FixReport(
+                                report.issueTitle(),
+                                report.issueUrl(),
+                                report.issueBodyExcerpt(),
+                                report.rootCauseAnalysis(),
+                                report.proposedFilePath(),
+                                report.proposedCode(),
+                                executionResult.diff(),
+                                "PASSED",
+                                executionResult.iterations(),
+                                report.iterationHistory(),
+                                Instant.now());
+
+                        issueStore.saveFixReport(recordId, updatedReport);
+                        issueStore.markPrSubmitted(recordId, executionResult.prUrl());
+                        metrics.recordIssueSucceeded();
+
+                        log.info("[FixLoop] {} → PR_SUBMITTED prUrl={} reviewApproved={}",
+                                issueId, executionResult.prUrl(), reviewResult.approved());
+
+                        // Push to all connected dashboard clients
+                        sseRegistry.broadcast("issue-analysed", buildIssueEvent(
+                                recordId, issue, analysis, affectedFilesStr));
+
+                    } else {
+                        issueStore.markExecutionFailed(recordId, executionResult.failureReason());
+                        metrics.recordIssueFailed("execution_failed");
+                        log.info("[FixLoop] {} → EXECUTION_FAILED reason={}",
+                                issueId, executionResult.failureReason());
+                    }
 
                     log.info("[FixLoop] {} → ANALYSED (complexity={})", issueId,
                             analysis.estimatedComplexity());

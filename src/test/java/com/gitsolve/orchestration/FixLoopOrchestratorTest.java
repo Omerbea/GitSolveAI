@@ -2,6 +2,9 @@ package com.gitsolve.orchestration;
 
 import com.gitsolve.agent.analysis.AnalysisResult;
 import com.gitsolve.agent.analysis.AnalysisService;
+import com.gitsolve.agent.execution.ExecutionService;
+import com.gitsolve.agent.instructions.FixInstructionsService;
+import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.agent.scout.ScoutService;
 import com.gitsolve.agent.triage.TriageService;
 import com.gitsolve.config.GitSolveProperties;
@@ -15,6 +18,7 @@ import com.gitsolve.telemetry.AgentMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
 
 import java.util.List;
 import java.util.Optional;
@@ -29,12 +33,15 @@ import static org.mockito.Mockito.*;
 @Tag("unit")
 class FixLoopOrchestratorTest {
 
-    private ScoutService       mockScout;
-    private TriageService      mockTriage;
-    private AnalysisService    mockAnalysis;
-    private IssueStore         mockIssueStore;
-    private AgentMetrics       mockMetrics;
-    private GitSolveProperties mockProps;
+    private ScoutService          mockScout;
+    private TriageService         mockTriage;
+    private AnalysisService       mockAnalysis;
+    private IssueStore            mockIssueStore;
+    private AgentMetrics          mockMetrics;
+    private GitSolveProperties    mockProps;
+    private ApplicationContext    mockCtx;
+    private FixInstructionsService mockFixInstructions;
+    private ReviewerService       mockReviewer;
 
     private FixLoopOrchestrator orchestrator;
 
@@ -55,11 +62,14 @@ class FixLoopOrchestratorTest {
 
     @BeforeEach
     void setUp() {
-        mockScout      = mock(ScoutService.class);
-        mockTriage     = mock(TriageService.class);
-        mockAnalysis   = mock(AnalysisService.class);
-        mockIssueStore = mock(IssueStore.class);
-        mockMetrics    = mock(AgentMetrics.class);
+        mockScout          = mock(ScoutService.class);
+        mockTriage         = mock(TriageService.class);
+        mockAnalysis       = mock(AnalysisService.class);
+        mockIssueStore     = mock(IssueStore.class);
+        mockMetrics        = mock(AgentMetrics.class);
+        mockCtx            = mock(ApplicationContext.class);
+        mockFixInstructions = mock(FixInstructionsService.class);
+        mockReviewer       = mock(ReviewerService.class);
 
         mockProps = mock(GitSolveProperties.class);
         GitSolveProperties.GitHub github = mock(GitSolveProperties.GitHub.class);
@@ -76,9 +86,20 @@ class FixLoopOrchestratorTest {
 
         SseEmitterRegistry mockSse = mock(SseEmitterRegistry.class);
 
+        // Default stubs for the execution+review path
+        ExecutionService mockExecutionService = mock(ExecutionService.class);
+        when(mockCtx.getBean(ExecutionService.class)).thenReturn(mockExecutionService);
+        when(mockExecutionService.execute(any(), anyString()))
+                .thenReturn(ExecutionResult.success("https://github.com/fork/repo/pull/1", "diff", 1));
+        when(mockFixInstructions.generate(anyString(), anyInt(), anyString(), any()))
+                .thenReturn("Fix instructions text");
+        when(mockReviewer.review(any(), any()))
+                .thenReturn(new ReviewResult(true, List.of(), "LGTM"));
+
         orchestrator = new FixLoopOrchestrator(
                 mockScout, mockTriage, mockAnalysis,
-                mockIssueStore, mockSettings, mockMetrics, mockProps, mockSse);
+                mockIssueStore, mockSettings, mockMetrics, mockProps, mockSse,
+                mockCtx, mockFixInstructions, mockReviewer);
 
         RunLog mockRunLog = new RunLog();
         mockRunLog.setId(10L);
@@ -100,17 +121,17 @@ class FixLoopOrchestratorTest {
     }
 
     // ------------------------------------------------------------------ //
-    // TC-01: Happy path — issue gets analysed and marked SUCCESS          //
+    // TC-01: Happy path — issue executes and PR is submitted              //
     // ------------------------------------------------------------------ //
 
     @Test
-    void runFixLoop_happyPath_markSuccessCalled() {
+    void runFixLoop_happyPath_prSubmitted() {
         when(mockTriage.triageBatch(any()))
                 .thenReturn(List.of(triageResult(ISSUE)));
 
         orchestrator.runFixLoop();
 
-        verify(mockIssueStore).markSuccess(eq(1L), anyString(), anyString(), eq(0));
+        verify(mockIssueStore).markPrSubmitted(eq(1L), anyString());
         verify(mockMetrics).recordIssueSucceeded();
         verify(mockIssueStore, never()).markFailed(anyLong(), anyString(), anyInt());
     }
@@ -130,7 +151,7 @@ class FixLoopOrchestratorTest {
 
         verify(mockIssueStore).markFailed(eq(1L), contains("Analysis error"), eq(0));
         verify(mockMetrics).recordIssueFailed("analysis_error");
-        verify(mockIssueStore, never()).markSuccess(anyLong(), anyString(), anyString(), anyInt());
+        verify(mockIssueStore, never()).markPrSubmitted(anyLong(), anyString());
     }
 
     // ------------------------------------------------------------------ //
@@ -177,9 +198,29 @@ class FixLoopOrchestratorTest {
 
         orchestrator.runFixLoop();
 
-        verify(mockIssueStore).saveFixReport(eq(1L), argThat(r ->
+        verify(mockIssueStore, atLeastOnce()).saveFixReport(eq(1L), argThat(r ->
                 r.buildStatus().equals("ANALYSED") &&
                 r.rootCauseAnalysis().contains("null check")));
+    }
+
+    // ------------------------------------------------------------------ //
+    // TC-06: Execution fails — issue marked EXECUTION_FAILED              //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void runFixLoop_executionFails_markExecutionFailedCalled() {
+        when(mockTriage.triageBatch(any()))
+                .thenReturn(List.of(triageResult(ISSUE)));
+        when(mockCtx.getBean(ExecutionService.class)).thenReturn(mock(ExecutionService.class));
+        ExecutionService failingExecution = mockCtx.getBean(ExecutionService.class);
+        when(failingExecution.execute(any(), anyString()))
+                .thenReturn(ExecutionResult.failure("Build failed after 3 attempts", "", 3));
+
+        orchestrator.runFixLoop();
+
+        verify(mockIssueStore).markExecutionFailed(eq(1L), contains("Build failed"));
+        verify(mockMetrics).recordIssueFailed("execution_failed");
+        verify(mockIssueStore, never()).markPrSubmitted(anyLong(), anyString());
     }
 
     // ------------------------------------------------------------------ //
