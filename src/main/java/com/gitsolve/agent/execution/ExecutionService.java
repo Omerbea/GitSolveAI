@@ -207,17 +207,26 @@ public class ExecutionService {
                 log.info("[Execution] {} iter {}: context built from {} file(s): {}",
                         issueId, i, selectedPaths.size(), selectedPaths);
 
-                // LLM call
+                // LLM call — iteration 1 sends full context; iterations 2+ use the
+                // follow-up method to avoid re-sending sourceContext into the memory window.
                 reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.RUNNING, iterLabel, i);
                 String raw;
                 try {
-                    raw = aiService.execute(
-                            issue.repoFullName(),
-                            issue.issueNumber(),
-                            issue.title(),
-                            fixInstructions,
-                            sourceContext,
-                            buildError);
+                    if (i == 1) {
+                        raw = aiService.execute(
+                                issue.repoFullName(),
+                                issue.issueNumber(),
+                                issue.title(),
+                                fixInstructions,
+                                sourceContext,
+                                buildError);
+                    } else {
+                        raw = aiService.executeFollowUp(
+                                issue.repoFullName(),
+                                issue.issueNumber(),
+                                issue.title(),
+                                buildError);
+                    }
                     reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.DONE, iterLabel, i);
                 } catch (Exception e) {
                     reporter.step(recordId, ExecutionStep.LLM_CALL, StepStatus.FAILED, e.getMessage(), i);

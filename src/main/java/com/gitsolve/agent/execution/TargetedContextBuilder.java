@@ -17,19 +17,19 @@ import java.util.List;
  *   <li>Caps total output at {@link #MAX_TOTAL_CHARS} characters.</li>
  * </ul>
  *
- * <p>The per-file cap is intentional: if a file is large, the LLM only needs the
- * most relevant portion (it already knows which file to touch from the selection step).
+ * <p>The per-file cap exists to protect the total context budget. If a file exceeds
+ * the cap, a visible truncation marker is appended so the LLM knows more content exists.
  * A visible truncation marker at the end of a file tells the LLM that more content exists.
  */
 public class TargetedContextBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(TargetedContextBuilder.class);
 
-    /** Maximum characters to include from any single file. ~1500 tokens. */
-    public static final int MAX_FILE_CHARS  = 6_000;
+    /** Maximum characters to include from any single file. ~7500 tokens. */
+    public static final int MAX_FILE_CHARS  = 30_000;
 
-    /** Hard cap on total context across all files. ~7500 tokens. */
-    public static final int MAX_TOTAL_CHARS = 30_000;
+    /** Hard cap on total context across all files. ~20000 tokens. */
+    public static final int MAX_TOTAL_CHARS = 80_000;
 
     /**
      * Reads the selected files from the build environment and builds a context string.

@@ -88,6 +88,8 @@ class ExecutionServiceTest {
         when(repoCache.ensureFork(anyString())).thenReturn(tempDir);
         when(aiService.execute(anyString(), anyInt(), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(VALID_JSON);
+        lenient().when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
+                .thenReturn(VALID_JSON);
         when(parserMock.parse(anyString())).thenReturn(VALID_RESPONSE);
         when(env.listJavaFiles(anyString())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.getDiff()).thenReturn("--- a/Foo.java\n+++ b/Foo.java\n@@ -1 +1 @@");
@@ -226,5 +228,67 @@ class ExecutionServiceTest {
                 cmd.contains("commit -F /workspace/.gitsolve_commit_msg")));
 
         assertThat(result.success()).isTrue();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Second iteration uses executeFollowUp, not execute                  //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_secondIterationUsesFollowUp()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Local props with maxIterationsPerFix=2 to keep the test self-contained
+        GitSolveProperties localProps = new GitSolveProperties(
+                new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
+                new GitSolveProperties.Llm("anthropic", "claude-test", 500_000, 2),
+                new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
+                new GitSolveProperties.Schedule("0 0 0 * * *"),
+                new GitSolveProperties.RepoCache(tempDir.toString(), false)
+        );
+        ExecutionService localService = new ExecutionService(
+                aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
+                fileSelectorAiService, fileSelectorParser);
+
+        // Iteration 1 — build fails
+        BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
+        BuildOutput buildFail = new BuildOutput("", "[ERROR] BUILD FAILURE", 1, false, Duration.ofSeconds(5));
+        // Iteration 2 — build passes, followed by all git/push/pr commands
+        BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
+
+        when(env.runBuild(anyString()))
+                .thenReturn(gitPass)    // git checkout -b
+                // iteration 1
+                .thenReturn(gitPass)    // mvnw check
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildFail)  // mvn clean package (iteration 1 — FAILS)
+                // iteration 2
+                .thenReturn(gitPass)    // mvnw check
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildPass)  // mvn clean package (iteration 2 — PASSES)
+                .thenReturn(buildPass)  // git config user.email
+                .thenReturn(buildPass)  // git config user.name
+                .thenReturn(buildPass)  // git commit
+                .thenReturn(buildPass)  // rm commit msg
+                .thenReturn(buildPass)  // git remote set-url
+                .thenReturn(buildPass); // git push
+
+        when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
+                .thenReturn(VALID_JSON);
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
+        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X");
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.iterations()).isEqualTo(2);
+
+        // execute() must be called exactly once (iteration 1 only)
+        verify(aiService, times(1)).execute(
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyString());
+
+        // executeFollowUp() must be called exactly once (iteration 2 only)
+        verify(aiService, times(1)).executeFollowUp(
+                anyString(), anyInt(), anyString(), anyString());
     }
 }
