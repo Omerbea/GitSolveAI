@@ -1,7 +1,10 @@
 package com.gitsolve.agent.execution;
 
+import com.gitsolve.agent.buildclassifier.BuildFailure;
+import com.gitsolve.agent.buildclassifier.BuildFailureClassifier;
 import com.gitsolve.agent.buildprofile.BuildProfile;
 import com.gitsolve.agent.buildprofile.BuildProfileInspector;
+import com.gitsolve.agent.buildrepair.BuildRepairService;
 import com.gitsolve.agent.depcheck.DependencyCheckResult;
 import com.gitsolve.agent.depcheck.DependencyPreCheckService;
 import com.gitsolve.agent.reviewer.ReviewerService;
@@ -88,6 +91,8 @@ public class ExecutionService {
     private final ReviewerService       reviewerService;
     private final BuildProfileInspector buildProfileInspector;
     private final DependencyPreCheckService dependencyPreCheckService;
+    private final BuildFailureClassifier buildFailureClassifier;
+    private final BuildRepairService     buildRepairService;
 
     /** Set before execute() via setProgressReporter(). */
     private ExecutionProgressReporter reporter  = NoopProgressReporter.INSTANCE;
@@ -105,7 +110,9 @@ public class ExecutionService {
             FileSelectorParser fileSelectorParser,
             ReviewerService reviewerService,
             BuildProfileInspector buildProfileInspector,
-            DependencyPreCheckService dependencyPreCheckService) {
+            DependencyPreCheckService dependencyPreCheckService,
+            BuildFailureClassifier buildFailureClassifier,
+            BuildRepairService buildRepairService) {
         this.aiService             = aiService;
         this.context               = context;
         this.parser                = parser;
@@ -118,6 +125,8 @@ public class ExecutionService {
         this.reviewerService       = reviewerService;
         this.buildProfileInspector = buildProfileInspector;
         this.dependencyPreCheckService = dependencyPreCheckService;
+        this.buildFailureClassifier    = buildFailureClassifier;
+        this.buildRepairService        = buildRepairService;
     }
 
     /**
@@ -462,6 +471,13 @@ public class ExecutionService {
                 reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
                         "exit=" + buildOut.exitCode() + " (iteration " + i + ")", i);
                 buildError = buildOut.extractStackTrace();
+                BuildFailure failure = buildFailureClassifier.classify(buildError);
+                log.info("[Execution] {} iter {}: classified failure type={} location='{}'",
+                        issueId, i, failure.type(), failure.location());
+                String repairHint = buildRepairService.repair(failure, buildError);
+                if (!repairHint.equals(buildError)) {
+                    buildError = repairHint + "\n\n--- Raw build output ---\n" + buildError;
+                }
                 log.warn("[Execution] {} iter {}: build error fed to LLM ({}chars):\n{}",
                         issueId, i, buildError.length(), buildError);
             }

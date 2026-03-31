@@ -3,8 +3,12 @@ package com.gitsolve.agent.execution;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.gitsolve.agent.buildclassifier.BuildFailure;
+import com.gitsolve.agent.buildclassifier.BuildFailureClassifier;
+import com.gitsolve.agent.buildclassifier.BuildFailureType;
 import com.gitsolve.agent.buildprofile.BuildProfile;
 import com.gitsolve.agent.buildprofile.BuildProfileInspector;
+import com.gitsolve.agent.buildrepair.BuildRepairService;
 import com.gitsolve.agent.depcheck.DependencyCheckResult;
 import com.gitsolve.agent.depcheck.DependencyPreCheckService;
 import com.gitsolve.config.GitSolveProperties;
@@ -57,6 +61,8 @@ class ExecutionServiceTest {
     @Mock ReviewerService          reviewerService;
     @Mock BuildProfileInspector    buildProfileInspector;
     @Mock DependencyPreCheckService dependencyPreCheckService;
+    @Mock BuildFailureClassifier   buildFailureClassifier;
+    @Mock BuildRepairService       buildRepairService;
 
     @TempDir Path tempDir;
 
@@ -92,7 +98,7 @@ class ExecutionServiceTest {
 
         service = new ExecutionService(aiService, ctx, parserMock, gitHubClient, props, repoCache,
                 fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
-                dependencyPreCheckService);
+                dependencyPreCheckService, buildFailureClassifier, buildRepairService);
 
         // Common stubs
         when(ctx.getBean(DockerBuildEnvironment.class)).thenReturn(env);
@@ -112,6 +118,8 @@ class ExecutionServiceTest {
         lenient().when(reviewerService.review(any(), any())).thenReturn(new ReviewResult(true, List.of(), "LGTM"));
         when(buildProfileInspector.inspect(any())).thenReturn(BuildProfile.defaultProfile());
         lenient().when(dependencyPreCheckService.check(any(), any())).thenReturn(DependencyCheckResult.noIssues());
+        lenient().when(buildFailureClassifier.classify(anyString())).thenReturn(BuildFailure.unknown());
+        lenient().when(buildRepairService.repair(any(), anyString())).thenAnswer(inv -> inv.getArgument(1));
     }
 
     // ------------------------------------------------------------------ //
@@ -295,7 +303,7 @@ class ExecutionServiceTest {
         ExecutionService localService = new ExecutionService(
                 aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
                 fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
-                dependencyPreCheckService);
+                dependencyPreCheckService, buildFailureClassifier, buildRepairService);
 
         // Iteration 1 — build fails
         BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
@@ -356,7 +364,7 @@ class ExecutionServiceTest {
         ExecutionService localService = new ExecutionService(
                 aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
                 fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
-                dependencyPreCheckService);
+                dependencyPreCheckService, buildFailureClassifier, buildRepairService);
 
         BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
         BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
@@ -401,5 +409,72 @@ class ExecutionServiceTest {
         verify(aiService, times(1)).executeFollowUp(
                 anyString(), anyInt(), anyString(),
                 argThat(be -> be.contains("REVIEWER REJECTED")));
+    }
+
+    // ------------------------------------------------------------------ //
+    // Build failure classifier and repair hint wired into iteration loop  //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_buildFailure_classifyAndRepairHintFedToNextIteration()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Local props with maxIterationsPerFix=2
+        GitSolveProperties localProps = new GitSolveProperties(
+                new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
+                new GitSolveProperties.Llm("anthropic", "claude-test", "claude-haiku-test", "claude-sonnet-test", 500_000, 2),
+                new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
+                new GitSolveProperties.Schedule("0 0 0 * * *"),
+                new GitSolveProperties.RepoCache(tempDir.toString(), false)
+        );
+        ExecutionService localService = new ExecutionService(
+                aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
+                fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
+                dependencyPreCheckService, buildFailureClassifier, buildRepairService);
+
+        BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
+        BuildOutput buildFail = new BuildOutput("", "[ERROR] BUILD FAILURE\n[ERROR] Foo.java:10: error: cannot find symbol", 1, false, Duration.ofSeconds(5));
+        BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
+
+        when(env.runBuild(anyString()))
+                .thenReturn(gitPass)    // git checkout -b
+                // iteration 1
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildFail)  // mvn clean package (FAILS)
+                // iteration 2
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildPass)  // mvn clean package (PASSES)
+                .thenReturn(buildPass)  // git config user.email
+                .thenReturn(buildPass)  // git config user.name
+                .thenReturn(buildPass)  // git commit
+                .thenReturn(buildPass)  // rm commit msg
+                .thenReturn(buildPass)  // git remote set-url
+                .thenReturn(buildPass); // git push
+
+        // Classifier returns a typed COMPILE_ERROR with a location
+        when(buildFailureClassifier.classify(anyString()))
+                .thenReturn(new BuildFailure(BuildFailureType.COMPILE_ERROR, "Foo.java:10",
+                        "cannot find symbol", "check imports"));
+
+        // Repair service returns a focused hint (different from the raw error)
+        when(buildRepairService.repair(any(), anyString()))
+                .thenReturn("REPAIR HINT: check imports at Foo.java:10");
+
+        when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
+        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X", List.of());
+
+        // Classifier must have been invoked once (for the iteration-1 failure)
+        verify(buildFailureClassifier).classify(anyString());
+
+        // The follow-up call must include the repair hint in the buildError argument
+        verify(aiService).executeFollowUp(
+                anyString(), anyInt(), anyString(),
+                argThat(be -> be.contains("REPAIR HINT")));
+
+        assertThat(result.success()).isTrue();
     }
 }
