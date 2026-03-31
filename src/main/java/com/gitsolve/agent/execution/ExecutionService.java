@@ -244,6 +244,7 @@ public class ExecutionService {
             int  totalOutputTokens = 0;
             long loopStartMs       = System.currentTimeMillis();
             PhaseStats lastReviewerStats = null;
+            BuildFailure lastFailure = BuildFailure.unknown();
 
             for (int i = 1; i <= maxIter; i++) {
                 log.info("[Execution] {} iteration {}/{}", issueId, i, maxIter);
@@ -468,12 +469,13 @@ public class ExecutionService {
                     return ExecutionResult.success(prUrl, lastDiff, i, executionStats, lastReviewerStats);
                 }
 
-                reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
-                        "exit=" + buildOut.exitCode() + " (iteration " + i + ")", i);
                 buildError = buildOut.extractStackTrace();
                 BuildFailure failure = buildFailureClassifier.classify(buildError);
                 log.info("[Execution] {} iter {}: classified failure type={} location='{}'",
                         issueId, i, failure.type(), failure.location());
+                lastFailure = failure;
+                reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
+                        buildFailureLabel(failure), i);
                 String repairHint = buildRepairService.repair(failure, buildError);
                 if (!repairHint.equals(buildError)) {
                     buildError = repairHint + "\n\n--- Raw build output ---\n" + buildError;
@@ -484,7 +486,7 @@ public class ExecutionService {
 
             log.warn("[Execution] {} exhausted {} iterations without passing build", issueId, maxIter);
             reporter.step(recordId, ExecutionStep.BUILD, StepStatus.FAILED,
-                    "Exhausted " + maxIter + " iterations");
+                    buildFailureLabel(lastFailure) + " — Exhausted " + maxIter + " iterations");
             // Build accumulated stats even on exhaustion
             long totalDurationMs = System.currentTimeMillis() - loopStartMs;
             PhaseStats executionStats = new PhaseStats(
@@ -608,5 +610,25 @@ public class ExecutionService {
     static String redactToken(String input) {
         if (input == null) return null;
         return TOKEN_PATTERN.matcher(input).replaceAll("https://x-access-token:[REDACTED]@");
+    }
+
+    /**
+     * Returns a human-readable label for a classified build failure, including the
+     * source location when available. Used as the reporter.step() detail string.
+     *
+     * <p>Examples: "Compile error — Foo.java:10", "Test failure", "Build failed (unclassified)"
+     */
+    private static String buildFailureLabel(BuildFailure f) {
+        String label = switch (f.type()) {
+            case COMPILE_ERROR          -> "Compile error";
+            case TEST_FAILURE           -> "Test failure";
+            case DEPENDENCY_RESOLUTION  -> "Dependency error";
+            case WRONG_BUILD_COMMAND    -> "Wrong build command";
+            case MISSING_FILE           -> "Missing file";
+            case LLM_HALLUCINATION      -> "Build failed (unclassified)";
+        };
+        return (f.location() != null && !f.location().isBlank())
+                ? label + " \u2014 " + f.location()
+                : label;
     }
 }

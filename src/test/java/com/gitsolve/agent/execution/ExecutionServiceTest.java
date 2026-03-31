@@ -477,4 +477,71 @@ class ExecutionServiceTest {
 
         assertThat(result.success()).isTrue();
     }
+
+    // ------------------------------------------------------------------ //
+    // Reporter detail contains classified failure type and location       //
+    // ------------------------------------------------------------------ //
+
+    @Test
+    void execute_buildFailure_reporterDetailContainsTypeAndLocation()
+            throws BuildEnvironmentException, RepoCacheException {
+        // Local props with maxIterationsPerFix=2
+        GitSolveProperties localProps = new GitSolveProperties(
+                new GitSolveProperties.GitHub("test-token", 2, 5, List.of(), null),
+                new GitSolveProperties.Llm("anthropic", "claude-test", "claude-haiku-test", "claude-sonnet-test", 500_000, 2),
+                new GitSolveProperties.Docker("eclipse-temurin:21-jdk", 1024, 50_000, 300),
+                new GitSolveProperties.Schedule("0 0 0 * * *"),
+                new GitSolveProperties.RepoCache(tempDir.toString(), false)
+        );
+        ExecutionService localService = new ExecutionService(
+                aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
+                fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
+                dependencyPreCheckService, buildFailureClassifier, buildRepairService);
+
+        ExecutionProgressReporter mockReporter = mock(ExecutionProgressReporter.class);
+        localService.setProgressReporter(1L, mockReporter);
+
+        BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
+        BuildOutput buildFail = new BuildOutput("", "[ERROR] BUILD FAILURE\n[ERROR] Foo.java:10: error: cannot find symbol", 1, false, Duration.ofSeconds(5));
+        BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
+
+        when(env.runBuild(anyString()))
+                .thenReturn(gitPass)    // git checkout -b
+                // iteration 1
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildFail)  // mvn clean package (FAILS)
+                // iteration 2
+                .thenReturn(gitPass)    // pom check
+                .thenReturn(buildPass)  // mvn clean package (PASSES)
+                .thenReturn(buildPass)  // git config user.email
+                .thenReturn(buildPass)  // git config user.name
+                .thenReturn(buildPass)  // git commit
+                .thenReturn(buildPass)  // rm commit msg
+                .thenReturn(buildPass)  // git remote set-url
+                .thenReturn(buildPass); // git push
+
+        // Classifier returns COMPILE_ERROR with location "Foo.java:10"
+        when(buildFailureClassifier.classify(anyString()))
+                .thenReturn(new BuildFailure(BuildFailureType.COMPILE_ERROR, "Foo.java:10",
+                        "cannot find symbol", "check imports"));
+
+        when(aiService.executeFollowUp(anyString(), anyInt(), anyString(), anyString()))
+                .thenReturn(Response.from(new AiMessage(VALID_JSON), null, null));
+        when(gitHubClient.createGitHubPr(anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Mono.just("https://github.com/apache/commons-lang/pull/99"));
+
+        GitIssue issue = new GitIssue("apache/commons-lang", 42, "Fix NPE", "body", null, List.of());
+        ExecutionResult result = localService.execute(issue, "Fix the NPE by doing X", List.of());
+
+        assertThat(result.success()).isTrue();
+
+        // reporter.step(BUILD, FAILED, detail) must have been called with a detail
+        // containing both the failure type label and the location
+        verify(mockReporter).step(
+                eq(1L),
+                eq(ExecutionStep.BUILD),
+                eq(StepStatus.FAILED),
+                argThat(d -> d.contains("Compile error") && d.contains("Foo.java:10")),
+                anyInt());
+    }
 }
