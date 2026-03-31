@@ -1,7 +1,9 @@
 package com.gitsolve.config;
 
 import com.gitsolve.agent.analysis.AnalysisAiService;
+import com.gitsolve.agent.buildclassifier.BuildFailureClassifierAiService;
 import com.gitsolve.agent.buildprofile.BuildProfileInspectorAiService;
+import com.gitsolve.agent.buildrepair.BuildRepairAiService;
 import com.gitsolve.agent.depcheck.DependencyPreCheckAiService;
 import com.gitsolve.agent.execution.ExecutionAiService;
 import com.gitsolve.agent.execution.FileSelectorAiService;
@@ -185,6 +187,24 @@ public class AgentConfig {
     public DependencyPreCheckAiService dependencyPreCheckAiService(
             @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(DependencyPreCheckAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public BuildFailureClassifierAiService buildFailureClassifierAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
+        return AiServices.builder(BuildFailureClassifierAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public BuildRepairAiService buildRepairAiService(
+            @Qualifier("generativeChatModel") ChatLanguageModel model) {
+        return AiServices.builder(BuildRepairAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }
