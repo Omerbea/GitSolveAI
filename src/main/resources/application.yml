@@ -74,6 +74,8 @@ management:
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p %pid --- [%15.15t] %-40.40logger{39} : %m%n"
   level:
     com.gitsolve: DEBUG
     org.flywaydb: INFO

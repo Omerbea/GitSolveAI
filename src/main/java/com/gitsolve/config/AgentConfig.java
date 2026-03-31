@@ -1,6 +1,8 @@
 package com.gitsolve.config;
 
 import com.gitsolve.agent.analysis.AnalysisAiService;
+import com.gitsolve.agent.buildprofile.BuildProfileInspectorAiService;
+import com.gitsolve.agent.depcheck.DependencyPreCheckAiService;
 import com.gitsolve.agent.execution.ExecutionAiService;
 import com.gitsolve.agent.execution.FileSelectorAiService;
 import com.gitsolve.agent.instructions.FixInstructionsAiService;
@@ -68,6 +70,7 @@ public class AgentConfig {
                 .maxTokens(16384)
                 .maxRetries(5)
                 .temperature(0.3)
+                .timeout(java.time.Duration.ofMinutes(5))
                 .build();
     }
 
@@ -164,6 +167,24 @@ public class AgentConfig {
     public ReviewerAiService reviewerAiService(
             @Qualifier("strictChatModel") ChatLanguageModel model) {
         return AiServices.builder(ReviewerAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public BuildProfileInspectorAiService buildProfileInspectorAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
+        return AiServices.builder(BuildProfileInspectorAiService.class)
+                .chatLanguageModel(model)
+                .build();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "gitsolve.llm.provider", havingValue = "anthropic")
+    public DependencyPreCheckAiService dependencyPreCheckAiService(
+            @Qualifier("strictChatModel") ChatLanguageModel model) {
+        return AiServices.builder(DependencyPreCheckAiService.class)
                 .chatLanguageModel(model)
                 .build();
     }

@@ -52,22 +52,37 @@ public class BuildProfileInspector {
             String readmeContent      = env.readFile("README.md").orElse("");
             String contributingContent = env.readFile("CONTRIBUTING.md").orElse("");
 
-            // 2. Validate container environment — log results, do not fail on these
+            // 2. Filesystem detection — fast, reliable, does not depend on docs quality
             BuildOutput javaVersion = env.runBuild("java -version 2>&1");
             log.info("BuildProfileInspector: JDK check stdout='{}' stderr='{}' exit={}",
                     javaVersion.stdout().trim(), javaVersion.stderr().trim(), javaVersion.exitCode());
 
-            BuildOutput wrapperCheck = env.runBuild("test -f /workspace/mvnw && echo yes || echo no");
-            log.info("BuildProfileInspector: mvnw present={}",
-                    wrapperCheck.stdout().trim());
+            BuildOutput mvnwCheck   = env.runBuild("test -f /workspace/mvnw   && echo yes || echo no");
+            BuildOutput gradlewCheck = env.runBuild("test -f /workspace/gradlew && echo yes || echo no");
+            BuildOutput pomCheck    = env.runBuild("test -f /workspace/pom.xml && echo yes || echo no");
+            BuildOutput gradleCheck = env.runBuild(
+                    "(test -f /workspace/build.gradle || test -f /workspace/build.gradle.kts) && echo yes || echo no");
 
-            // 3. Call LLM to extract build profile
+            boolean hasMvnw   = "yes".equals(mvnwCheck.stdout().trim());
+            boolean hasGradlew = "yes".equals(gradlewCheck.stdout().trim());
+            boolean hasPom    = "yes".equals(pomCheck.stdout().trim());
+            boolean hasGradle = "yes".equals(gradleCheck.stdout().trim());
+
+            log.info("BuildProfileInspector: mvnw={} gradlew={} pom.xml={} build.gradle={}",
+                    hasMvnw, hasGradlew, hasPom, hasGradle);
+
+            // 3. Call LLM to extract build profile from docs (best-effort — may return nulls)
             Response<AiMessage> aiResponse = aiService.inspect(readmeContent, contributingContent);
             String rawResponse = aiResponse.content().text();
 
             // 4. Parse response — strip code fences first
             String stripped = stripCodeFences(rawResponse.trim());
             BuildProfile profile = objectMapper.readValue(stripped, BuildProfile.class);
+
+            // 5. Fill in null fields from filesystem evidence when LLM couldn't infer them
+            if (profile.buildTool() == null) {
+                profile = fillFromFilesystem(profile, hasMvnw, hasGradlew, hasPom, hasGradle);
+            }
 
             log.info("BuildProfileInspector: tool={} cmd='{}' jdk={}",
                     profile.buildTool(), profile.buildCommand(), profile.jdkConstraint());
@@ -84,6 +99,43 @@ public class BuildProfileInspector {
     // ------------------------------------------------------------------ //
     // Private helpers                                                      //
     // ------------------------------------------------------------------ //
+
+    /**
+     * Returns a new profile with {@code buildTool}, {@code wrapperPath}, and {@code buildCommand}
+     * derived from filesystem evidence when the LLM couldn't infer them from documentation.
+     */
+    private static BuildProfile fillFromFilesystem(BuildProfile base,
+            boolean hasMvnw, boolean hasGradlew, boolean hasPom, boolean hasGradle) {
+        String tool, wrapperPath, command;
+        if (hasGradlew) {
+            tool = "gradle";
+            wrapperPath = "chmod +x /workspace/gradlew && cd /workspace && ./gradlew";
+            command = "./gradlew clean build --no-daemon";
+        } else if (hasGradle) {
+            tool = "gradle";
+            wrapperPath = null;
+            command = "gradle clean build --no-daemon";
+        } else if (hasMvnw) {
+            tool = "maven";
+            wrapperPath = "chmod +x /workspace/mvnw && /workspace/mvnw";
+            command = "./mvnw clean package --no-transfer-progress";
+        } else if (hasPom) {
+            tool = "maven";
+            wrapperPath = null;
+            command = "mvn clean package --no-transfer-progress";
+        } else {
+            // Nothing recognisable — keep base (will fall back to Maven default in ExecutionService)
+            return base;
+        }
+        return new BuildProfile(
+                tool,
+                wrapperPath,
+                command,
+                base.jdkConstraint(),
+                base.customPrereqs(),
+                base.notes()
+        );
+    }
 
     /**
      * Strips {@code ```json ... ```} or {@code ``` ... ```} code fences from the LLM response.

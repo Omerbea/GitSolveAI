@@ -1,5 +1,9 @@
 package com.gitsolve.agent.execution;
 
+import com.gitsolve.agent.buildprofile.BuildProfile;
+import com.gitsolve.agent.buildprofile.BuildProfileInspector;
+import com.gitsolve.agent.depcheck.DependencyCheckResult;
+import com.gitsolve.agent.depcheck.DependencyPreCheckService;
 import com.gitsolve.agent.reviewer.ReviewerService;
 import com.gitsolve.config.GitSolveProperties;
 import com.gitsolve.docker.BuildEnvironment;
@@ -82,6 +86,8 @@ public class ExecutionService {
     private final FileSelectorParser    fileSelectorParser;
     private final TargetedContextBuilder contextBuilder;
     private final ReviewerService       reviewerService;
+    private final BuildProfileInspector buildProfileInspector;
+    private final DependencyPreCheckService dependencyPreCheckService;
 
     /** Set before execute() via setProgressReporter(). */
     private ExecutionProgressReporter reporter  = NoopProgressReporter.INSTANCE;
@@ -97,7 +103,9 @@ public class ExecutionService {
             RepoCache repoCache,
             FileSelectorAiService fileSelectorAiService,
             FileSelectorParser fileSelectorParser,
-            ReviewerService reviewerService) {
+            ReviewerService reviewerService,
+            BuildProfileInspector buildProfileInspector,
+            DependencyPreCheckService dependencyPreCheckService) {
         this.aiService             = aiService;
         this.context               = context;
         this.parser                = parser;
@@ -108,6 +116,8 @@ public class ExecutionService {
         this.fileSelectorParser    = fileSelectorParser;
         this.contextBuilder        = new TargetedContextBuilder();
         this.reviewerService       = reviewerService;
+        this.buildProfileInspector = buildProfileInspector;
+        this.dependencyPreCheckService = dependencyPreCheckService;
     }
 
     /**
@@ -175,7 +185,35 @@ public class ExecutionService {
 
             // Clone from host bind-mount (no network needed)
             env.mountAndClone(hostPath, null);
+            reporter.step(recordId, ExecutionStep.DOCKER_SETUP, StepStatus.RUNNING, "Inspecting build profile");
+
+            // --- Build profile inspection ---
+            BuildProfile buildProfile = buildProfileInspector.inspect(env);
+            log.info("[Execution] {} buildProfile: tool={} cmd={}", issueId,
+                    buildProfile.buildTool(), buildProfile.buildCommand());
+
+            // Derive local build-tool variables from the inspected profile (Option A).
+            // Keep the suffix-appending pattern and pom-narrowing logic intact.
+            boolean isGradle = "gradle".equals(buildProfile.buildTool());
+            final String buildCmdPrefix;
+            if (buildProfile.wrapperPath() != null) {
+                buildCmdPrefix = buildProfile.wrapperPath();
+            } else {
+                buildCmdPrefix = isGradle ? "gradle" : "mvn";
+            }
+            String detectedBuildTool = buildProfile.buildTool() != null
+                    ? buildProfile.buildTool()
+                    : (isGradle ? "Gradle" : "Maven");
+
             reporter.step(recordId, ExecutionStep.DOCKER_SETUP, StepStatus.DONE, null);
+
+            // --- Dependency pre-check ---
+            DependencyCheckResult depCheck = dependencyPreCheckService.check(env, buildProfile);
+            if (depCheck.hasSuspiciousDeps()) {
+                log.warn("[Execution] {} dep pre-check findings: {}", issueId, depCheck.findings());
+                fixInstructions = "DEP_WARNINGS:\n" + String.join("\n", depCheck.findings())
+                        + "\n\n" + fixInstructions;
+            }
 
             // Create working branch
             BuildOutput branchOut = env.runBuild(
@@ -187,36 +225,6 @@ public class ExecutionService {
                 env.runBuild("git -C /workspace checkout " + branch);
             }
             reporter.step(recordId, ExecutionStep.BRANCH, StepStatus.DONE, branch);
-
-            // Detect build tool (Maven vs Gradle) once per run
-            BuildOutput gradleDetect = env.runBuild(
-                    "(test -f /workspace/build.gradle || test -f /workspace/build.gradle.kts || " +
-                    "test -f /workspace/settings.gradle || test -f /workspace/settings.gradle.kts) " +
-                    "&& echo gradle || echo maven");
-            boolean isGradle = gradleDetect.stdout() != null
-                    && gradleDetect.stdout().strip().equals("gradle");
-
-            // Pre-build the command prefix (wrapper detection done once)
-            final String buildCmdPrefix;
-            if (isGradle) {
-                BuildOutput wrapperCheck = env.runBuild(
-                        "test -f /workspace/gradlew && echo yes || echo no");
-                if (wrapperCheck.stdout() != null && wrapperCheck.stdout().strip().equals("yes")) {
-                    env.runBuild("chmod +x /workspace/gradlew");
-                    buildCmdPrefix = "cd /workspace && ./gradlew";
-                } else {
-                    buildCmdPrefix = "cd /workspace && gradle";
-                }
-            } else {
-                BuildOutput wrapperCheck = env.runBuild(
-                        "test -f /workspace/mvnw && echo yes || echo no");
-                buildCmdPrefix = (wrapperCheck.stdout() != null
-                        && wrapperCheck.stdout().strip().equals("yes"))
-                        ? "chmod +x /workspace/mvnw && /workspace/mvnw"
-                        : "mvn";
-            }
-            String detectedBuildTool = isGradle ? "Gradle" : "Maven";
-            log.info("[Execution] {} detected build tool: {}", issueId, detectedBuildTool);
 
             String buildError = "";
             String lastDiff   = "";

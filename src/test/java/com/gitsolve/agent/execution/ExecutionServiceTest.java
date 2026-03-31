@@ -3,6 +3,10 @@ package com.gitsolve.agent.execution;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.gitsolve.agent.buildprofile.BuildProfile;
+import com.gitsolve.agent.buildprofile.BuildProfileInspector;
+import com.gitsolve.agent.depcheck.DependencyCheckResult;
+import com.gitsolve.agent.depcheck.DependencyPreCheckService;
 import com.gitsolve.config.GitSolveProperties;
 import com.gitsolve.docker.BuildEnvironmentException;
 import com.gitsolve.docker.BuildOutput;
@@ -51,6 +55,8 @@ class ExecutionServiceTest {
     @Mock FileSelectorAiService    fileSelectorAiService;
     @Mock FileSelectorParser       fileSelectorParser;
     @Mock ReviewerService          reviewerService;
+    @Mock BuildProfileInspector    buildProfileInspector;
+    @Mock DependencyPreCheckService dependencyPreCheckService;
 
     @TempDir Path tempDir;
 
@@ -85,7 +91,8 @@ class ExecutionServiceTest {
         );
 
         service = new ExecutionService(aiService, ctx, parserMock, gitHubClient, props, repoCache,
-                fileSelectorAiService, fileSelectorParser, reviewerService);
+                fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
+                dependencyPreCheckService);
 
         // Common stubs
         when(ctx.getBean(DockerBuildEnvironment.class)).thenReturn(env);
@@ -103,6 +110,8 @@ class ExecutionServiceTest {
         when(fileSelectorParser.parse(anyString(), anyList())).thenReturn(List.of("src/main/java/Foo.java"));
         when(env.readFile(anyString())).thenReturn(java.util.Optional.of("// stub content"));
         lenient().when(reviewerService.review(any(), any())).thenReturn(new ReviewResult(true, List.of(), "LGTM"));
+        when(buildProfileInspector.inspect(any())).thenReturn(BuildProfile.defaultProfile());
+        lenient().when(dependencyPreCheckService.check(any(), any())).thenReturn(DependencyCheckResult.noIssues());
     }
 
     // ------------------------------------------------------------------ //
@@ -285,7 +294,8 @@ class ExecutionServiceTest {
         );
         ExecutionService localService = new ExecutionService(
                 aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
-                fileSelectorAiService, fileSelectorParser, reviewerService);
+                fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
+                dependencyPreCheckService);
 
         // Iteration 1 — build fails
         BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
@@ -296,11 +306,9 @@ class ExecutionServiceTest {
         when(env.runBuild(anyString()))
                 .thenReturn(gitPass)    // git checkout -b
                 // iteration 1
-                .thenReturn(gitPass)    // mvnw check
                 .thenReturn(gitPass)    // pom check
                 .thenReturn(buildFail)  // mvn clean package (iteration 1 — FAILS)
                 // iteration 2
-                .thenReturn(gitPass)    // mvnw check
                 .thenReturn(gitPass)    // pom check
                 .thenReturn(buildPass)  // mvn clean package (iteration 2 — PASSES)
                 .thenReturn(buildPass)  // git config user.email
@@ -347,21 +355,20 @@ class ExecutionServiceTest {
         );
         ExecutionService localService = new ExecutionService(
                 aiService, ctx, parserMock, gitHubClient, localProps, repoCache,
-                fileSelectorAiService, fileSelectorParser, reviewerService);
+                fileSelectorAiService, fileSelectorParser, reviewerService, buildProfileInspector,
+                dependencyPreCheckService);
 
         BuildOutput gitPass   = new BuildOutput("", "", 0, false, Duration.ofMillis(10));
         BuildOutput buildPass = new BuildOutput("", "", 0, false, Duration.ofSeconds(2));
 
-        // iter1: checkout, mvnwCheck, pomCheck, buildPass
-        // iter2: mvnwCheck, pomCheck, buildPass, gitConfig×2, gitCommit, rmMsg, setRemote, gitPush
+        // iter1: checkout, pomCheck, buildPass (reviewer rejects)
+        // iter2: pomCheck, buildPass (reviewer approves), gitConfig×2, gitCommit, rmMsg, setRemote, gitPush
         when(env.runBuild(anyString()))
                 .thenReturn(gitPass)    // git checkout -b
                 // iteration 1
-                .thenReturn(gitPass)    // mvnw check
                 .thenReturn(gitPass)    // pom check
                 .thenReturn(buildPass)  // mvn clean package (PASSES — but reviewer rejects)
                 // iteration 2
-                .thenReturn(gitPass)    // mvnw check
                 .thenReturn(gitPass)    // pom check
                 .thenReturn(buildPass)  // mvn clean package (PASSES — reviewer approves)
                 .thenReturn(buildPass)  // git config user.email
