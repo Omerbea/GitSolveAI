@@ -26,3 +26,54 @@ vendor/
 coverage/
 .cache/
 tmp/
+
+# ── Java / Maven ──
+*.class
+*.jar
+!**/test/**/*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+.mvn/timing.properties
+!.mvn/wrapper/maven-wrapper.jar
+
+# ── Spring Boot ──
+HELP.md
+
+# ── Docker / Logs ──
+logs/
+
+# ── IDE — IntelliJ ──
+*.iml
+*.ipr
+*.iws
+out/
+.idea/
+
+# ── IDE — Eclipse ──
+.classpath
+.project
+.settings/
+.factorypath
+bin/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Secrets (never commit) ──
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account.json
+secrets/
+.secrets/
+
+# ── Claude Code ──
+.claude/
+.bg-shell/
