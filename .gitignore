@@ -77,3 +77,4 @@ secrets/
 # ── Claude Code ──
 .claude/
 .bg-shell/
+CLAUDE.md
