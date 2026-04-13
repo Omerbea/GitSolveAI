@@ -121,7 +121,13 @@ mvn test -Punit
 # 5. Start the application
 mvn spring-boot:run
 ```
+## Quick Start
 
+### Run core services only
+docker compose --profile core up -d
+
+### Run full stack with observability
+docker compose --profile core --profile observability up -d
 Open the dashboard at [http://localhost:8080/](http://localhost:8080/)  
 Health check at [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health)
 
